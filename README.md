@@ -15,6 +15,8 @@ By accounting for the dynamic nature of magnetospheric boundaries,
 MANGO allows researchers to treat disparate satellite observations as part of a single, coherent atlas.
 
 
+🚨  **Note:** The MANGO dataset will soon be made publicly available on this GitHub repository. Stay tuned for updates!
+
 
 ## 🚀 Key Features
 Every data point in the MANGO dataset is:
