@@ -49,7 +49,14 @@ List of publications using the MANGO dataset:
 
 ---
 
-## 🚀 2025
+### 🚀 2026
+
+* **The MANGO dataset: Magnetospheric Atlas of Normalized Geospace Observations** **Michotte de Welle, B.**, Aunai, N., Ghisalberti, A., Lavraud, B., et al.  
+    *In prep. for Nature Scientific Data*
+
+---
+
+### 🚀 2025
 
 * **Statistical Estimate of the Magnetopause Reconnection Rate as a Function of the Interplanetary Magnetic Field Clock Angle** **Michotte de Welle, B.**, Aunai, N., Lavraud, B., et al.  
     *ESS Open Archive*, Septembre 2025.  
@@ -65,7 +72,7 @@ List of publications using the MANGO dataset:
 
 ---
 
-## 🛰️ 2024
+### 🛰️ 2024
 * **Advanced Methods for Analyzing in-Situ Observations of Magnetic Reconnection** Hasegawa, H., Argall, M. R., Aunai, N., ..., **Michotte de Welle, B.**, ..., & Zenitani, S.  
     *Space Science Reviews*, 220(6).  
     [🔗 DOI: 10.1007/s11214-024-01095-w](https://doi.org/10.1007/s11214-024-01095-w) | [🌌 ADS](https://ui.adsabs.harvard.edu/abs/2024SSRv..220...68H)
@@ -84,16 +91,16 @@ List of publications using the MANGO dataset:
 
 ---
 
-## 🔍 2022
+### 🔍 2022
 
-### Massive Multi-Mission Statistical Study and Analytical Modeling of the Earth's Magnetopause:
+#### Massive Multi-Mission Statistical Study and Analytical Modeling of the Earth's Magnetopause:
 
 1.  **Part 1: A Gradient Boosting Based Automatic Detection of Near-Earth Regions** Nguyen, G., Aunai, N., **Michotte de Welle, B.**, et al. [🔗 DOI: 10.1029/2021JA029773](https://doi.org/10.1029/2021JA029773)
 2.  **Part 2: Shape and Location** Nguyen, G., Aunai, N., **Michotte de Welle, B.**, et al. [🔗 DOI: 10.1029/2021JA029774](https://doi.org/10.1029/2021JA029774)
 3.  **Part 3: An Asymmetric Non Indented Magnetopause Analytical Model** Nguyen, G., Aunai, N., **Michotte de Welle, B.**, et al. [🔗 DOI: 10.1029/2021JA030112](https://doi.org/10.1029/2021JA030112)
 4.  **Part 4: On the Near-Cusp Magnetopause Indentation** Nguyen, G., Aunai, N., **Michotte de Welle, B.**, et al. [🔗 DOI: 10.1029/2021JA029776](https://doi.org/10.1029/2021JA029776)
 
-### Others
+#### Others
 
 * **Global Three-Dimensional Draping of Magnetic Field Lines in Earth's Magnetosheath** **Michotte de Welle, B.**, Aunai, N., Nguyen, G., Lavraud, B., Génot, V., et al.  
     *Journal of Geophysical Research (Space Physics)*, 127(12).  
