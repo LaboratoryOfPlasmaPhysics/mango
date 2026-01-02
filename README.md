@@ -1,7 +1,8 @@
 
 # MANGO: Magnetospheric Atlas of Normalized Geospace Observations
 
-![MANGO Logo](https://github.com/user-attachments/assets/e74ec86e-82a4-4438-86da-4484ebc056e1)
+<img width="300" height="300" alt="mangologo" src="https://github.com/user-attachments/assets/50291814-4f37-470e-98b9-5c05c541d708" />
+
 
 ## 🌌 Overview
 
