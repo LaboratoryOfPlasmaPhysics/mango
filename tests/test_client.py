@@ -6,10 +6,10 @@ import polars as pl
 import pytest
 from fastapi.testclient import TestClient
 
-import mango
-from mango.app import create_app
-from mango.client import MangoFilterError, _validate_filters
-from mango.dataset import MangoDataset, get_dataset
+import space_mango as sm
+from space_mango.app import create_app
+from space_mango.client import MangoFilterError, _validate_filters
+from space_mango.dataset import MangoDataset, get_dataset
 
 
 MAGNETOSHEATH_FILTERS = {
@@ -95,13 +95,13 @@ MAGNETOSHEATH_ROWS = [
 ]
 
 
-def _make_mango_client(data_dir: Path) -> mango.MangoClient:
+def _make_test_mango_client(data_dir: Path) -> sm.MangoClient:
     """Create a MangoClient backed by a test server with fixture data."""
     app = create_app()
     ds = MangoDataset(data_dir)
     app.dependency_overrides[get_dataset] = lambda: ds
     tc = TestClient(app)
-    client = mango.MangoClient.__new__(mango.MangoClient)
+    client = sm.MangoClient.__new__(sm.MangoClient)
     client._base_url = "http://testserver"
     client._http = httpx.Client(transport=tc._transport, base_url="http://testserver")
     client._filter_cache = {}
@@ -112,7 +112,7 @@ def test_client_get_data_all():
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         _write_test_region(base, "magnetosheath", MAGNETOSHEATH_ROWS)
-        client = _make_mango_client(base)
+        client = _make_test_mango_client(base)
 
         df = client.get_data("magnetosheath", limit=10)
         assert len(df) == 2
@@ -124,7 +124,7 @@ def test_client_get_data_spacecraft_filter():
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         _write_test_region(base, "magnetosheath", MAGNETOSHEATH_ROWS)
-        client = _make_mango_client(base)
+        client = _make_test_mango_client(base)
 
         df = client.get_data("magnetosheath", spacecraft=["THA"], limit=10)
         assert len(df) == 1
@@ -135,7 +135,7 @@ def test_client_get_data_range_filter():
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         _write_test_region(base, "magnetosheath", MAGNETOSHEATH_ROWS)
-        client = _make_mango_client(base)
+        client = _make_test_mango_client(base)
 
         df = client.get_data("magnetosheath", bz_imf_max=-1.0, limit=10)
         assert len(df) == 1
@@ -146,6 +146,6 @@ def test_client_regions():
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
         _write_test_region(base, "magnetosheath", MAGNETOSHEATH_ROWS)
-        client = _make_mango_client(base)
+        client = _make_test_mango_client(base)
 
         assert "magnetosheath" in client.regions()

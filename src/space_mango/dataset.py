@@ -2,7 +2,7 @@ from pathlib import Path
 
 import polars as pl
 
-from mango.models import RANGE_FILTERS, Region
+from space_mango.models import RANGE_FILTERS, Region
 
 _DEFAULT_DATA_DIR = Path("/data/mango")
 

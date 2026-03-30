@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from mango.client import MangoClient, MangoFilterError
+from space_mango.client import MangoClient, MangoFilterError
 
 if TYPE_CHECKING:
     import polars as pl

@@ -2,7 +2,7 @@ import os
 
 from fastapi import FastAPI
 
-from mango.routes import data, health
+from space_mango.routes import data, health
 
 
 def create_app() -> FastAPI:

@@ -43,7 +43,7 @@ server = [
 
 [dependency-groups]
 dev = [
-    "mango[server]",
+    "space-mango[server]",
     "pytest>=9.0.2",
     "pytest-sugar>=1.1.1",
     "ruff>=0.15.1",
@@ -52,7 +52,7 @@ dev = [
 ]
 
 [project.scripts]
-mango = "mango.cli:main"
+mango = "space_mango.cli:main"
 
 
 # ---- Build system ----
@@ -70,7 +70,7 @@ style = "pep440"
 bump = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mango"]
+packages = ["src/space_mango"]
 
 
 # ---- Settings ----

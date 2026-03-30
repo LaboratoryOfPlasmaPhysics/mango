@@ -4,8 +4,8 @@ import polars as pl
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 
-from mango.dataset import MangoDataset, get_dataset
-from mango.models import RANGE_FILTERS, DatasetInfo, FilterInfo, Format, Region
+from space_mango.dataset import MangoDataset, get_dataset
+from space_mango.models import RANGE_FILTERS, DatasetInfo, FilterInfo, Format, Region
 
 router = APIRouter(tags=["data"])
 

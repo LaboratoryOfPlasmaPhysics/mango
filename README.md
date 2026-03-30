@@ -42,17 +42,17 @@ pip install space-mango[server]
 ## Quick Start
 
 ```python
-import mango
+import space_mango as sm
 
 # List available regions
-mango.regions()
+sm.regions()
 # ['magnetosphere', 'magnetosheath', 'solar_wind']
 
 # Get magnetosheath data with southward IMF and high dynamic pressure
-df = mango.get_data("magnetosheath", bz_imf_max=-2, pd_sw_min=3)
+df = sm.get_data("magnetosheath", bz_imf_max=-2, pd_sw_min=3)
 
 # Select specific columns and spacecraft
-df = mango.get_data(
+df = sm.get_data(
     "magnetosphere",
     columns=["X_gsm", "Y_gsm", "Z_gsm", "Np", "Bz"],
     spacecraft=["MMS1", "THA"],
@@ -61,10 +61,10 @@ df = mango.get_data(
 )
 
 # List available filters for a region
-mango.filters("magnetosheath")
+sm.filters("magnetosheath")
 
 # List columns
-mango.columns("magnetosphere")
+sm.columns("magnetosphere")
 ```
 
 ## Self-Hosting

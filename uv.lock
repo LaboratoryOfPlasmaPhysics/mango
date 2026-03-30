@@ -246,57 +246,6 @@ wheels = [
 ]
 
 [[package]]
-name = "mango"
-source = { editable = "." }
-dependencies = [
-    { name = "httpx" },
-    { name = "polars" },
-    { name = "pyarrow" },
-]
-
-[package.optional-dependencies]
-server = [
-    { name = "cyclopts" },
-    { name = "fastapi" },
-    { name = "gunicorn" },
-    { name = "uvicorn", extra = ["standard"] },
-    { name = "uvicorn-worker" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "basedpyright" },
-    { name = "codespell" },
-    { name = "mango", extra = ["server"] },
-    { name = "pytest" },
-    { name = "pytest-sugar" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "cyclopts", marker = "extra == 'server'", specifier = ">=4.10.1" },
-    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115" },
-    { name = "gunicorn", marker = "extra == 'server'", specifier = ">=23.0" },
-    { name = "httpx", specifier = ">=0.28" },
-    { name = "polars", specifier = ">=1.0" },
-    { name = "pyarrow", specifier = ">=18.0" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.34" },
-    { name = "uvicorn-worker", marker = "extra == 'server'", specifier = ">=0.3" },
-]
-provides-extras = ["server"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "basedpyright", specifier = ">=1.38.0" },
-    { name = "codespell", specifier = ">=2.4.1" },
-    { name = "mango", extras = ["server"] },
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest-sugar", specifier = ">=1.1.1" },
-    { name = "ruff", specifier = ">=0.15.1" },
-]
-
-[[package]]
 name = "markdown-it-py"
 version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -692,6 +641,57 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/37/e6/90b2b33419f59d0f2c4c8a48a4b74b460709a557e8e0064cf33ad894f983/ruff-0.15.8-py3-none-win32.whl", hash = "sha256:bc1f0a51254ba21767bfa9a8b5013ca8149dcf38092e6a9eb704d876de94dc34", size = 10571959, upload-time = "2026-03-26T18:39:36.117Z" },
     { url = "https://files.pythonhosted.org/packages/1f/a2/ef467cb77099062317154c63f234b8a7baf7cb690b99af760c5b68b9ee7f/ruff-0.15.8-py3-none-win_amd64.whl", hash = "sha256:04f79eff02a72db209d47d665ba7ebcad609d8918a134f86cb13dd132159fc89", size = 11743893, upload-time = "2026-03-26T18:39:25.01Z" },
     { url = "https://files.pythonhosted.org/packages/15/e2/77be4fff062fa78d9b2a4dea85d14785dac5f1d0c1fb58ed52331f0ebe28/ruff-0.15.8-py3-none-win_arm64.whl", hash = "sha256:cf891fa8e3bb430c0e7fac93851a5978fc99c8fa2c053b57b118972866f8e5f2", size = 11048175, upload-time = "2026-03-26T18:40:01.06Z" },
+]
+
+[[package]]
+name = "space-mango"
+source = { editable = "." }
+dependencies = [
+    { name = "httpx" },
+    { name = "polars" },
+    { name = "pyarrow" },
+]
+
+[package.optional-dependencies]
+server = [
+    { name = "cyclopts" },
+    { name = "fastapi" },
+    { name = "gunicorn" },
+    { name = "uvicorn", extra = ["standard"] },
+    { name = "uvicorn-worker" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "basedpyright" },
+    { name = "codespell" },
+    { name = "pytest" },
+    { name = "pytest-sugar" },
+    { name = "ruff" },
+    { name = "space-mango", extra = ["server"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cyclopts", marker = "extra == 'server'", specifier = ">=4.10.1" },
+    { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115" },
+    { name = "gunicorn", marker = "extra == 'server'", specifier = ">=23.0" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "polars", specifier = ">=1.0" },
+    { name = "pyarrow", specifier = ">=18.0" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.34" },
+    { name = "uvicorn-worker", marker = "extra == 'server'", specifier = ">=0.3" },
+]
+provides-extras = ["server"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "basedpyright", specifier = ">=1.38.0" },
+    { name = "codespell", specifier = ">=2.4.1" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-sugar", specifier = ">=1.1.1" },
+    { name = "ruff", specifier = ">=0.15.1" },
+    { name = "space-mango", extras = ["server"] },
 ]
 
 [[package]]

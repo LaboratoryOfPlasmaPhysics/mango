@@ -5,9 +5,9 @@ import polars as pl
 import pytest
 from fastapi.testclient import TestClient
 
-from mango.app import create_app
-from mango.dataset import MangoDataset, get_dataset
-from mango.models import Region
+from space_mango.app import create_app
+from space_mango.dataset import MangoDataset, get_dataset
+from space_mango.models import Region
 
 client = TestClient(create_app())
 
