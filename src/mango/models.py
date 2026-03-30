@@ -1,6 +1,5 @@
 from enum import StrEnum
 
-from fastapi import Query
 from pydantic import BaseModel
 
 
@@ -9,47 +8,124 @@ class Format(StrEnum):
     csv = "csv"
 
 
-class SubsetParams:
-    """Query parameters for subsetting a MANGO region dataset."""
+class Region(StrEnum):
+    magnetosphere = "magnetosphere"
+    magnetosheath = "magnetosheath"
+    solar_wind = "solar_wind"
 
-    def __init__(
-        self,
-        columns: list[str] | None = Query(None, description="Columns to include (default: all)"),
-        spacecraft: list[str] | None = Query(None, description="Filter by spacecraft (e.g. THA, C1, MMS1)"),
-        time_min: str | None = Query(None, description="Start time (ISO 8601)"),
-        time_max: str | None = Query(None, description="End time (ISO 8601)"),
-        x_gsm_min: float | None = Query(None, description="Min X_gsm (Re)"),
-        x_gsm_max: float | None = Query(None, description="Max X_gsm (Re)"),
-        y_gsm_min: float | None = Query(None, description="Min Y_gsm (Re)"),
-        y_gsm_max: float | None = Query(None, description="Max Y_gsm (Re)"),
-        z_gsm_min: float | None = Query(None, description="Min Z_gsm (Re)"),
-        z_gsm_max: float | None = Query(None, description="Max Z_gsm (Re)"),
-        bz_imf_min: float | None = Query(None, description="Min Bz_imf (nT)"),
-        bz_imf_max: float | None = Query(None, description="Max Bz_imf (nT)"),
-        pd_sw_min: float | None = Query(None, description="Min dynamic pressure (nPa)"),
-        pd_sw_max: float | None = Query(None, description="Max dynamic pressure (nPa)"),
-        limit: int = Query(100_000, ge=1, le=10_000_000, description="Max rows to return"),
-        format: Format = Query(Format.arrow, description="Output format: arrow or csv"),
-    ):
-        self.columns = columns
-        self.spacecraft = spacecraft
-        self.time_min = time_min
-        self.time_max = time_max
-        self.x_gsm_min = x_gsm_min
-        self.x_gsm_max = x_gsm_max
-        self.y_gsm_min = y_gsm_min
-        self.y_gsm_max = y_gsm_max
-        self.z_gsm_min = z_gsm_min
-        self.z_gsm_max = z_gsm_max
-        self.bz_imf_min = bz_imf_min
-        self.bz_imf_max = bz_imf_max
-        self.pd_sw_min = pd_sw_min
-        self.pd_sw_max = pd_sw_max
-        self.limit = limit
-        self.format = format
+
+class RangeFilter(BaseModel):
+    column: str
+    unit: str
+    description: str
+    # Which regions this filter applies to
+    regions: frozenset[Region] = frozenset(Region)
+
+
+# ---- Filter catalog: single source of truth ----
+
+RANGE_FILTERS: dict[str, RangeFilter] = {
+    # Upstream solar wind conditions (paired)
+    "bz_imf": RangeFilter(
+        column="Bz_imf", unit="nT",
+        description="IMF Bz — southward (<0) drives reconnection",
+        regions=frozenset({Region.magnetosphere, Region.magnetosheath}),
+    ),
+    "by_imf": RangeFilter(
+        column="By_imf", unit="nT",
+        description="IMF By — controls reconnection geometry and asymmetry",
+        regions=frozenset({Region.magnetosphere, Region.magnetosheath}),
+    ),
+    "bx_imf": RangeFilter(
+        column="Bx_imf", unit="nT",
+        description="IMF Bx — cone angle / Parker spiral orientation",
+        regions=frozenset({Region.magnetosphere, Region.magnetosheath}),
+    ),
+    "pd_sw": RangeFilter(
+        column="Pd_sw", unit="nPa",
+        description="Solar wind dynamic pressure",
+        regions=frozenset({Region.magnetosphere, Region.magnetosheath}),
+    ),
+    "np_sw": RangeFilter(
+        column="Np_sw", unit="cm⁻³",
+        description="Solar wind proton density",
+        regions=frozenset({Region.magnetosphere, Region.magnetosheath}),
+    ),
+    "tp_sw": RangeFilter(
+        column="Tp_sw", unit="K",
+        description="Solar wind proton temperature",
+        regions=frozenset({Region.magnetosphere, Region.magnetosheath}),
+    ),
+    "vx_sw": RangeFilter(
+        column="Vx_sw", unit="km/s",
+        description="Solar wind velocity X (GSM) — bulk speed",
+        regions=frozenset({Region.magnetosphere, Region.magnetosheath}),
+    ),
+    "beta_sw": RangeFilter(
+        column="Beta_sw", unit="",
+        description="Solar wind plasma beta",
+        regions=frozenset({Region.magnetosphere, Region.magnetosheath}),
+    ),
+    "ma_sw": RangeFilter(
+        column="Ma_sw", unit="",
+        description="Solar wind Alfvén Mach number",
+        regions=frozenset({Region.magnetosphere, Region.magnetosheath}),
+    ),
+    # Dipole tilt
+    "tilt": RangeFilter(
+        column="Tilt", unit="rad",
+        description="Dipole tilt angle — seasonal / hemispheric asymmetry",
+        regions=frozenset({Region.magnetosphere, Region.magnetosheath}),
+    ),
+    # Spatial — raw GSM position
+    "x_gsm": RangeFilter(
+        column="X_gsm", unit="Re",
+        description="X GSM coordinate",
+    ),
+    "y_gsm": RangeFilter(
+        column="Y_gsm", unit="Re",
+        description="Y GSM coordinate",
+    ),
+    "z_gsm": RangeFilter(
+        column="Z_gsm", unit="Re",
+        description="Z GSM coordinate",
+    ),
+    # Spatial — normalized relative position
+    "d_msp": RangeFilter(
+        column="D_msp", unit="",
+        description="Relative distance Earth(0)–magnetopause(1)",
+        regions=frozenset({Region.magnetosphere}),
+    ),
+    "d_msh": RangeFilter(
+        column="D_msh", unit="",
+        description="Relative distance magnetopause(0)–bow shock(1)",
+        regions=frozenset({Region.magnetosheath}),
+    ),
+    # Local plasma measurements
+    "np": RangeFilter(
+        column="Np", unit="cm⁻³",
+        description="Local plasma density",
+    ),
+    "tp": RangeFilter(
+        column="Tp", unit="K",
+        description="Local plasma temperature",
+    ),
+    "bz": RangeFilter(
+        column="Bz", unit="nT",
+        description="Local Bz (GSM)",
+    ),
+}
 
 
 class DatasetInfo(BaseModel):
     region: str
     row_count: int
     columns: list[str]
+
+
+class FilterInfo(BaseModel):
+    name: str
+    column: str
+    unit: str
+    description: str
+    params: str  # "min=..&max=.."
