@@ -23,7 +23,6 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
     "Topic :: Scientific/Engineering :: Physics",
-    "Private :: Do Not Upload",
 ]
 
 dependencies = [
