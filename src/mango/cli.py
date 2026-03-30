@@ -1,6 +1,12 @@
 from pathlib import Path
 
-import cyclopts
+try:
+    import cyclopts
+except ImportError:
+    raise ImportError(
+        "The MANGO server requires extra dependencies.\n"
+        "Install them with: pip install mango[server]"
+    ) from None
 
 app = cyclopts.App(name="mango", help="MANGO dataset service")
 
