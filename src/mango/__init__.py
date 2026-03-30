@@ -35,7 +35,7 @@ def get_data(
     time_max: str | None = None,
     sw_paired_only: bool = False,
     normalized_only: bool = False,
-    limit: int = 100_000,
+    limit: int | None = None,
     **filters: float,
 ) -> pl.DataFrame:
     """Query the MANGO dataset and return a polars DataFrame.

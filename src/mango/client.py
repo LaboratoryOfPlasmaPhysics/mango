@@ -92,7 +92,7 @@ class MangoClient:
         time_max: str | None = None,
         sw_paired_only: bool = False,
         normalized_only: bool = False,
-        limit: int = 100_000,
+        limit: int | None = None,
         **filters: float,
     ) -> pl.DataFrame:
         """Query the MANGO dataset and return a polars DataFrame.
@@ -105,10 +105,9 @@ class MangoClient:
         other = self._other_region_filters(exclude=region)
         cleaned = _validate_filters(filters, region, valid_names, other)
 
-        params: dict[str, str | list[str]] = {
-            "format": "arrow",
-            "limit": str(limit),
-        }
+        params: dict[str, str | list[str]] = {"format": "arrow"}
+        if limit is not None:
+            params["limit"] = str(limit)
         if columns:
             params["columns"] = columns
         if spacecraft:
