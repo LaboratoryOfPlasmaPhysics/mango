@@ -3,7 +3,7 @@ Repository = "https://github.com/SciQLop/MANGO"
 
 [project]
 name = "mango"
-description = "Web service for subsetting and distributing the MANGO dataset"
+description = "Python client and server for the MANGO magnetospheric dataset"
 authors = [
     { name="Alexis Jeandet", email="alexis.jeandet@member.fsf.org" },
 ]
@@ -27,18 +27,23 @@ classifiers = [
 ]
 
 dependencies = [
-    "fastapi>=0.115",
-    "uvicorn[standard]>=0.34",
     "polars>=1.0",
     "pyarrow>=18.0",
+    "httpx>=0.28",
+]
+
+[project.optional-dependencies]
+server = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
     "cyclopts>=4.10.1",
 ]
 
 [dependency-groups]
 dev = [
+    "mango[server]",
     "pytest>=9.0.2",
     "pytest-sugar>=1.1.1",
-    "httpx>=0.28",
     "ruff>=0.15.1",
     "codespell>=2.4.1",
     "basedpyright>=1.38.0",
