@@ -1,0 +1,113 @@
+[project.urls]
+Repository = "https://github.com/SciQLop/MANGO"
+
+[project]
+name = "mango"
+description = "Web service for subsetting and distributing the MANGO dataset"
+authors = [
+    { name="Alexis Jeandet", email="alexis.jeandet@member.fsf.org" },
+]
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.11,<4.0"
+dynamic = ["version"]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Private :: Do Not Upload",
+]
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "polars>=1.0",
+    "pyarrow>=18.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-sugar>=1.1.1",
+    "httpx>=0.28",
+    "ruff>=0.15.1",
+    "codespell>=2.4.1",
+    "basedpyright>=1.38.0",
+]
+
+[project.scripts]
+mango = "mango.main:main"
+
+
+# ---- Build system ----
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+bump = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mango"]
+
+
+# ---- Settings ----
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B", "I"]
+ignore = [
+    "E501",
+    "E402",
+    "E731",
+    "W191",
+    "E111",
+    "E114",
+    "E117",
+    "D206",
+    "D300",
+    "Q000",
+    "Q001",
+    "Q002",
+    "Q003",
+    "COM812",
+    "COM819",
+    "ISC002",
+]
+
+[tool.basedpyright]
+include = ["src", "tests"]
+reportIgnoreCommentWithoutRule = false
+reportUnnecessaryTypeIgnoreComment = false
+reportMissingTypeStubs = false
+reportUnusedCallResult = false
+reportAny = false
+reportExplicitAny = false
+reportImplicitStringConcatenation = false
+reportUnreachable = false
+
+[tool.codespell]
+ignore-words-list = "msh,msp"
+
+[tool.pytest.ini_options]
+python_files = ["*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = ["tests"]
+filterwarnings = []
