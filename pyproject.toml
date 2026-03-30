@@ -1,8 +1,8 @@
 [project.urls]
-Repository = "https://github.com/SciQLop/MANGO"
+Repository = "https://github.com/LaboratoryOfPlasmaPhysics/mango"
 
 [project]
-name = "mango"
+name = "space-mango"
 description = "Python client and server for the MANGO magnetospheric dataset"
 authors = [
     { name="Alexis Jeandet", email="alexis.jeandet@member.fsf.org" },

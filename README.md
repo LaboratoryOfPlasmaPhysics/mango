@@ -33,10 +33,10 @@ The Python package provides:
 
 ```bash
 # Client only (query the public server)
-pip install mango
+pip install space-mango
 
 # With server dependencies (self-hosting)
-pip install mango[server]
+pip install space-mango[server]
 ```
 
 ## Quick Start
