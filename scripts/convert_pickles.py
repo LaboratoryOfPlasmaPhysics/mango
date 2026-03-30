@@ -3,13 +3,16 @@
 Usage:
     python scripts/convert_pickles.py /path/to/pickle/dir /path/to/output/dir
 
-Converts each region one at a time to limit peak RAM. The magnetosphere
-file (~25 GB) is loaded once and written per-SC partition, then freed.
+Each region is converted in a forked subprocess so that memory is fully
+released to the OS between regions (Python/glibc don't return arena memory
+after large allocations).
 """
 
 import argparse
 import gc
+import os
 import pickle
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -33,7 +36,6 @@ def convert_region(pickle_path: Path, out_dir: Path, region: str) -> None:
 
     print(f"  shape: {df.shape}, memory: {df.memory_usage(deep=True).sum() / 1e9:.2f} GB")
 
-    # Rename time → Time to match service code
     if "time" in df.columns:
         df.rename(columns={"time": "Time"}, inplace=True)
 
@@ -53,6 +55,28 @@ def convert_region(pickle_path: Path, out_dir: Path, region: str) -> None:
     print(f"  done: {region}")
 
 
+def _convert_in_subprocess(pickle_path: Path, out_dir: Path, region: str) -> None:
+    """Fork a child process to convert one region, so memory is fully reclaimed."""
+    pid = os.fork()
+    if pid == 0:
+        # Child: convert and exit
+        try:
+            convert_region(pickle_path, out_dir, region)
+        except Exception as e:
+            print(f"ERROR converting {region}: {e}", file=sys.stderr)
+            os._exit(1)
+        os._exit(0)
+    else:
+        # Parent: wait for child
+        _, status = os.waitpid(pid, 0)
+        if os.WIFEXITED(status) and os.WEXITSTATUS(status) != 0:
+            print(f"FAILED: {region} (exit code {os.WEXITSTATUS(status)})", file=sys.stderr)
+            sys.exit(1)
+        if os.WIFSIGNALED(status):
+            print(f"KILLED: {region} (signal {os.WTERMSIG(status)})", file=sys.stderr)
+            sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Convert MANGO pickles to Hive Parquet")
     parser.add_argument("pickle_dir", type=Path, help="Directory containing .pkl files")
@@ -64,7 +88,7 @@ def main() -> None:
         if not pkl.exists():
             print(f"SKIP {pkl} (not found)")
             continue
-        convert_region(pkl, args.output_dir, region)
+        _convert_in_subprocess(pkl, args.output_dir, region)
 
     print("All done.")
 
