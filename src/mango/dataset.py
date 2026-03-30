@@ -2,19 +2,33 @@ from pathlib import Path
 
 import polars as pl
 
-from mango.models import SubsetParams
+from mango.models import RANGE_FILTERS, Region
 
-# Default path; override with MANGO_DATA_DIR env var.
 _DEFAULT_DATA_DIR = Path("/data/mango")
 
 
-def _range_filter(col: str, lo: float | None, hi: float | None) -> list[pl.Expr]:
+def _apply_range_filters(
+    lf: pl.LazyFrame, region: Region, raw_params: dict[str, str | None]
+) -> pl.LazyFrame:
+    """Apply all range filters from the catalog that have min/max values set."""
+    available = set(lf.collect_schema().names())
     filters: list[pl.Expr] = []
-    if lo is not None:
-        filters.append(pl.col(col) >= lo)
-    if hi is not None:
-        filters.append(pl.col(col) <= hi)
-    return filters
+
+    for name, filt in RANGE_FILTERS.items():
+        if region not in filt.regions:
+            continue
+        if filt.column not in available:
+            continue
+        lo = raw_params.get(f"{name}_min")
+        hi = raw_params.get(f"{name}_max")
+        if lo is not None:
+            filters.append(pl.col(filt.column) >= float(lo))
+        if hi is not None:
+            filters.append(pl.col(filt.column) <= float(hi))
+
+    if filters:
+        lf = lf.filter(pl.all_horizontal(filters))
+    return lf
 
 
 class MangoDataset:
@@ -26,42 +40,54 @@ class MangoDataset:
 
     def _lazy(self, region: str) -> pl.LazyFrame:
         if region not in self._frames:
-            path = self._dir / f"{region}.parquet"
-            self._frames[region] = pl.scan_parquet(path)
+            path = self._dir / region
+            self._frames[region] = pl.scan_parquet(
+                path, hive_partitioning=True
+            )
         return self._frames[region]
 
     def __getitem__(self, region: str) -> pl.LazyFrame:
         return self._lazy(region)
 
-    def query(self, region: str, params: SubsetParams) -> pl.DataFrame:
+    def query(
+        self,
+        region: Region,
+        raw_params: dict[str, str | None],
+        *,
+        columns: list[str] | None = None,
+        spacecraft: list[str] | None = None,
+        time_min: str | None = None,
+        time_max: str | None = None,
+        sw_paired_only: bool = False,
+        normalized_only: bool = False,
+        limit: int = 100_000,
+    ) -> pl.DataFrame:
         lf = self._lazy(region)
-
+        available = set(lf.collect_schema().names())
         filters: list[pl.Expr] = []
 
-        if params.spacecraft:
-            filters.append(pl.col("SC").is_in(params.spacecraft))
-
-        if params.time_min:
-            filters.append(pl.col("Time") >= params.time_min)
-        if params.time_max:
-            filters.append(pl.col("Time") <= params.time_max)
-
-        filters.extend(_range_filter("X_gsm", params.x_gsm_min, params.x_gsm_max))
-        filters.extend(_range_filter("Y_gsm", params.y_gsm_min, params.y_gsm_max))
-        filters.extend(_range_filter("Z_gsm", params.z_gsm_min, params.z_gsm_max))
-        filters.extend(_range_filter("Bz_imf", params.bz_imf_min, params.bz_imf_max))
-        filters.extend(_range_filter("Pd_sw", params.pd_sw_min, params.pd_sw_max))
+        if spacecraft:
+            filters.append(pl.col("SC").is_in(spacecraft))
+        if time_min:
+            filters.append(pl.col("Time") >= time_min)
+        if time_max:
+            filters.append(pl.col("Time") <= time_max)
+        if sw_paired_only and "SW_pairing" in available:
+            filters.append(pl.col("SW_pairing"))
+        if normalized_only and "Norma_pos" in available:
+            filters.append(pl.col("Norma_pos"))
 
         if filters:
             lf = lf.filter(pl.all_horizontal(filters))
 
-        if params.columns:
-            available = set(lf.collect_schema().names())
-            cols = [c for c in params.columns if c in available]
+        lf = _apply_range_filters(lf, region, raw_params)
+
+        if columns:
+            cols = [c for c in columns if c in available]
             if cols:
                 lf = lf.select(cols)
 
-        return lf.limit(params.limit).collect()
+        return lf.limit(limit).collect()
 
 
 _dataset: MangoDataset | None = None
