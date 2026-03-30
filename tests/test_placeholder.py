@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mango.app import create_app
-from mango.dataset import MangoDataset
+from mango.dataset import MangoDataset, get_dataset
 from mango.models import Region
 
 client = TestClient(create_app())
@@ -83,6 +83,13 @@ MAGNETOSHEATH_ROWS = [
 ]
 
 
+def _make_test_client(data_dir: Path) -> TestClient:
+    app = create_app()
+    ds = MangoDataset(data_dir)
+    app.dependency_overrides[get_dataset] = lambda: ds
+    return TestClient(app)
+
+
 def test_hive_dataset_query_all():
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
@@ -118,3 +125,29 @@ def test_hive_dataset_query_time_filter():
             limit=100,
         )
         assert len(df) == 1
+
+
+def test_data_endpoint_returns_csv():
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        _write_test_region(base, "magnetosheath", MAGNETOSHEATH_ROWS)
+
+        tc = _make_test_client(base)
+        r = tc.get("/api/v1/regions/magnetosheath/data?format=csv&limit=10")
+        assert r.status_code == 200
+        assert "text/csv" in r.headers["content-type"]
+        lines = r.text.strip().splitlines()
+        assert len(lines) == 3  # header + 2 data rows
+
+
+def test_data_endpoint_spacecraft_filter():
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        _write_test_region(base, "magnetosheath", MAGNETOSHEATH_ROWS)
+
+        tc = _make_test_client(base)
+        r = tc.get("/api/v1/regions/magnetosheath/data?format=csv&spacecraft=THA&limit=10")
+        assert r.status_code == 200
+        lines = r.text.strip().splitlines()
+        assert len(lines) == 2  # header + 1 row
+        assert "THA" in lines[1]
