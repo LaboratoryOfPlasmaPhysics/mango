@@ -4,43 +4,86 @@
 <img width="300" height="300" alt="mangologo" src="https://github.com/user-attachments/assets/5a92150f-ce77-45a8-b15e-8f66ff7cf44b" />
 
 
-## 🌌 Overview
+## Overview
 
-**MANGO** is a dataset designed for the global analysis of Earth's magnetosphere.
+**MANGO** is a dataset and Python toolkit for the global analysis of Earth's magnetosphere.
 Unlike raw satellite observations, MANGO provides a **unified, classified, and spatially normalized** view of geospace,
-where each datapoint is contextualized by its magnetospheric region and upstream solar wind conditions and 
+where each datapoint is contextualized by its magnetospheric region and upstream solar wind conditions and
 repositioned relative to dynamic boundaries like the magnetopause and bow shock.
 
 By accounting for the dynamic nature of magnetospheric boundaries,
 MANGO allows researchers to treat disparate satellite observations as part of a single, coherent atlas.
 
+## Key Features
 
-🚨  **Note:** The MANGO dataset will soon be made publicly available on this GitHub repository. Stay tuned for updates!
-
-
-## 🚀 Key Features
 Every data point in the MANGO dataset is:
-* **Classified:** Labeled by its specific magnetospheric region (e.g., Magnetosheath, Magnetosphere, Solar Wind).
+* **Classified:** Labeled by its specific magnetospheric region (magnetosphere, magnetosheath, solar wind).
 * **Contextualized:** Associated with the causal upstream solar wind conditions retrieved from OMNI data.
-* **Normalized:** Repositioned spatially relative to dynamic boundaries (the bow shock and magnetopause) 
+* **Normalized:** Repositioned spatially relative to dynamic boundaries (the bow shock and magnetopause).
+
+The Python package provides:
+* A **client** for querying the public MANGO server — returns [Polars](https://pola.rs) DataFrames via Arrow IPC.
+* A **server** (optional) for self-hosting the dataset with FastAPI.
+* **Data-driven filter catalog** — range filters on IMF, solar wind, spatial coordinates, and local plasma parameters.
 
 
 ---
 
-## 📊 Dataset Structure
+## Installation
 
-TBC
+```bash
+# Client only (query the public server)
+pip install mango
 
+# With server dependencies (self-hosting)
+pip install mango[server]
+```
 
-
-## 🔧 Usage
+## Quick Start
 
 ```python
 import mango
 
-mango.plot() # plots a count bin of the data 
+# List available regions
+mango.regions()
+# ['magnetosphere', 'magnetosheath', 'solar_wind']
 
-# more TBC
+# Get magnetosheath data with southward IMF and high dynamic pressure
+df = mango.get_data("magnetosheath", bz_imf_max=-2, pd_sw_min=3)
+
+# Select specific columns and spacecraft
+df = mango.get_data(
+    "magnetosphere",
+    columns=["X_gsm", "Y_gsm", "Z_gsm", "Np", "Bz"],
+    spacecraft=["MMS1", "THA"],
+    time_min="2015-01-01",
+    time_max="2020-12-31",
+)
+
+# List available filters for a region
+mango.filters("magnetosheath")
+
+# List columns
+mango.columns("magnetosphere")
+```
+
+## Self-Hosting
+
+```bash
+# Start the server (requires mango[server])
+mango serve --data-dir /path/to/parquet/data
+
+# Docker
+./docker/build.sh
+docker run -d -p 8000:8000 -v /path/to/data:/data/mango:ro mango
+```
+
+The server supports deployment behind a reverse proxy via `MANGO_ROOT_PATH`:
+
+```bash
+docker run -d -p 8000:8000 \
+  -e MANGO_ROOT_PATH="/mango" \
+  -v /path/to/data:/data/mango:ro mango
 ```
 
 

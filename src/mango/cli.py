@@ -27,7 +27,8 @@ def serve(
     if data_dir:
         os.environ["MANGO_DATA_DIR"] = str(data_dir)
 
-    uvicorn.run("mango.main:app", host=host, port=port, reload=reload)
+    root_path = os.environ.get("MANGO_ROOT_PATH", "")
+    uvicorn.run("mango.main:app", host=host, port=port, reload=reload, root_path=root_path)
 
 
 def main() -> None:

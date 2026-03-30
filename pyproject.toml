@@ -36,6 +36,8 @@ dependencies = [
 server = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
+    "uvicorn-worker>=0.3",
+    "gunicorn>=23.0",
     "cyclopts>=4.10.1",
 ]
 
