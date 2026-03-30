@@ -60,7 +60,7 @@ class MangoDataset:
         time_max: str | None = None,
         sw_paired_only: bool = False,
         normalized_only: bool = False,
-        limit: int = 100_000,
+        limit: int | None = None,
     ) -> pl.DataFrame:
         lf = self._lazy(region)
         available = set(lf.collect_schema().names())
@@ -87,7 +87,9 @@ class MangoDataset:
             if cols:
                 lf = lf.select(cols)
 
-        return lf.limit(limit).collect()
+        if limit is not None:
+            lf = lf.limit(limit)
+        return lf.collect()
 
 
 _dataset: MangoDataset | None = None

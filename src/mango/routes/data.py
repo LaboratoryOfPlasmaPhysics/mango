@@ -58,7 +58,7 @@ def region_data(
     time_max: str | None = Query(None, description="End time (ISO 8601)"),
     sw_paired_only: bool = Query(False, description="Only return points with upstream SW pairing"),
     normalized_only: bool = Query(False, description="Only return spatially normalized points"),
-    limit: int = Query(100_000, ge=1, le=10_000_000, description="Max rows to return"),
+    limit: int | None = Query(None, ge=1, le=10_000_000, description="Max rows to return (default: all)"),
     format: Format = Query(Format.arrow, description="Output format: arrow or csv"),
     # Range filters are passed as arbitrary query params (e.g. bz_imf_min=-5&pd_sw_max=4)
     # and extracted from the raw query string below.
