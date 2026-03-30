@@ -1,21 +1,20 @@
 """Convert MANGO pickle files to Hive-partitioned Parquet (by spacecraft).
 
-Usage:
-    python scripts/convert_pickles.py /path/to/pickle/dir /path/to/output/dir
+Two-pass strategy for large files:
+  1. Load pickle → write single temporary Parquet (peak RAM = pickle size)
+  2. Free all memory, then use Polars lazy scan to repartition by SC
 
-Each region is converted in a forked subprocess so that memory is fully
-released to the OS between regions (Python/glibc don't return arena memory
-after large allocations).
+Each region runs in a forked subprocess so memory is fully returned to the OS.
 """
 
-import argparse
 import gc
 import os
 import pickle
 import sys
+import tempfile
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -28,9 +27,9 @@ REGIONS = {
 ROW_GROUP_SIZE = 500_000
 
 
-def convert_region(pickle_path: Path, out_dir: Path, region: str) -> None:
-    print(f"Loading {pickle_path} ...")
-
+def _pickle_to_tmp_parquet(pickle_path: Path) -> Path:
+    """Pass 1: load pickle, write a single temporary Parquet file, free memory."""
+    print(f"  pass 1: loading pickle ...")
     with open(pickle_path, "rb") as f:
         df = pickle.load(f)
 
@@ -39,19 +38,48 @@ def convert_region(pickle_path: Path, out_dir: Path, region: str) -> None:
     if "time" in df.columns:
         df.rename(columns={"time": "Time"}, inplace=True)
 
-    region_dir = out_dir / region
-
-    for sc, group in df.groupby("SC", sort=False):
-        sc_dir = region_dir / f"SC={sc}"
-        sc_dir.mkdir(parents=True, exist_ok=True)
-        part = group.drop(columns=["SC"]).sort_values("Time").reset_index(drop=True)
-        table = pa.Table.from_pandas(part, preserve_index=False)
-        pq.write_table(table, sc_dir / "part-0.parquet", row_group_size=ROW_GROUP_SIZE)
-        print(f"  SC={sc}: {len(part)} rows → {sc_dir / 'part-0.parquet'}")
-        del part, table
-
+    tmp = Path(tempfile.mktemp(suffix=".parquet"))
+    print(f"  writing temporary parquet → {tmp}")
+    table = pa.Table.from_pandas(df, preserve_index=False)
     del df
     gc.collect()
+    pq.write_table(table, tmp, row_group_size=ROW_GROUP_SIZE)
+    del table
+    gc.collect()
+    return tmp
+
+
+def _repartition_by_sc(tmp_parquet: Path, out_dir: Path) -> None:
+    """Pass 2: lazy-scan the temp Parquet file and write Hive partitions."""
+    print("  pass 2: repartitioning by SC ...")
+    lf = pl.scan_parquet(tmp_parquet)
+    sc_values = lf.select("SC").unique().collect()["SC"].to_list()
+
+    for sc in sorted(sc_values):
+        sc_dir = out_dir / f"SC={sc}"
+        sc_dir.mkdir(parents=True, exist_ok=True)
+        part = (
+            lf.filter(pl.col("SC") == sc)
+            .drop("SC")
+            .sort("Time")
+            .collect()
+        )
+        part.write_parquet(sc_dir / "part-0.parquet", row_group_size=ROW_GROUP_SIZE)
+        print(f"  SC={sc}: {len(part)} rows")
+        del part
+
+
+def convert_region(pickle_path: Path, out_dir: Path, region: str) -> None:
+    print(f"Converting {region} ({pickle_path}) ...")
+    region_dir = out_dir / region
+    region_dir.mkdir(parents=True, exist_ok=True)
+
+    tmp_parquet = _pickle_to_tmp_parquet(pickle_path)
+    try:
+        _repartition_by_sc(tmp_parquet, region_dir)
+    finally:
+        tmp_parquet.unlink(missing_ok=True)
+
     print(f"  done: {region}")
 
 
@@ -59,7 +87,6 @@ def _convert_in_subprocess(pickle_path: Path, out_dir: Path, region: str) -> Non
     """Fork a child process to convert one region, so memory is fully reclaimed."""
     pid = os.fork()
     if pid == 0:
-        # Child: convert and exit
         try:
             convert_region(pickle_path, out_dir, region)
         except Exception as e:
@@ -67,7 +94,6 @@ def _convert_in_subprocess(pickle_path: Path, out_dir: Path, region: str) -> Non
             os._exit(1)
         os._exit(0)
     else:
-        # Parent: wait for child
         _, status = os.waitpid(pid, 0)
         if os.WIFEXITED(status) and os.WEXITSTATUS(status) != 0:
             print(f"FAILED: {region} (exit code {os.WEXITSTATUS(status)})", file=sys.stderr)
@@ -77,21 +103,21 @@ def _convert_in_subprocess(pickle_path: Path, out_dir: Path, region: str) -> Non
             sys.exit(1)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Convert MANGO pickles to Hive Parquet")
-    parser.add_argument("pickle_dir", type=Path, help="Directory containing .pkl files")
-    parser.add_argument("output_dir", type=Path, help="Output directory for Parquet files")
-    args = parser.parse_args()
-
+def main(pickle_dir: Path, output_dir: Path) -> None:
+    """Convert MANGO pickle files to Hive-partitioned Parquet."""
     for region, filename in REGIONS.items():
-        pkl = args.pickle_dir / filename
+        pkl = pickle_dir / filename
         if not pkl.exists():
             print(f"SKIP {pkl} (not found)")
             continue
-        _convert_in_subprocess(pkl, args.output_dir, region)
+        _convert_in_subprocess(pkl, output_dir, region)
 
     print("All done.")
 
 
 if __name__ == "__main__":
-    main()
+    import cyclopts
+
+    app = cyclopts.App(help=__doc__)
+    app.default(main)
+    app()

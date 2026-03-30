@@ -31,6 +31,7 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "polars>=1.0",
     "pyarrow>=18.0",
+    "cyclopts>=4.10.1",
 ]
 
 [dependency-groups]
@@ -44,7 +45,7 @@ dev = [
 ]
 
 [project.scripts]
-mango = "mango.main:main"
+mango = "mango.cli:main"
 
 
 # ---- Build system ----
