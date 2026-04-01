@@ -1,4 +1,5 @@
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -84,11 +85,11 @@ def _write_test_region(base: Path, region: str, rows: list[dict]) -> None:
 
 
 MAGNETOSHEATH_ROWS = [
-    {"Time": "2010-01-01T00:00:00", "SC": "THA", "Bx": 1.0, "By": 2.0, "Bz": 3.0,
+    {"Time": datetime(2010, 1, 1, 0, 0, 0), "SC": "THA", "Bx": 1.0, "By": 2.0, "Bz": 3.0,
      "Np": 10.0, "Vx": -200.0, "Vy": 0.0, "Vz": 0.0, "Tp": 1e6,
      "X_gsm": 8.0, "Y_gsm": 3.0, "Z_gsm": 0.0,
      "SW_pairing": True, "Bz_imf": -5.0, "Pd_sw": 3.0, "Norma_pos": True},
-    {"Time": "2010-01-01T00:00:05", "SC": "MMS", "Bx": 2.0, "By": 3.0, "Bz": 4.0,
+    {"Time": datetime(2010, 1, 1, 0, 0, 5), "SC": "MMS", "Bx": 2.0, "By": 3.0, "Bz": 4.0,
      "Np": 20.0, "Vx": -300.0, "Vy": 1.0, "Vz": 1.0, "Tp": 2e6,
      "X_gsm": 9.0, "Y_gsm": 4.0, "Z_gsm": 1.0,
      "SW_pairing": False, "Bz_imf": 2.0, "Pd_sw": 1.0, "Norma_pos": False},

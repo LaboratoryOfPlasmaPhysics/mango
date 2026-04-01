@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 
 import polars as pl
@@ -69,9 +70,9 @@ class MangoDataset:
         if spacecraft:
             filters.append(pl.col("SC").is_in(spacecraft))
         if time_min:
-            filters.append(pl.col("Time") >= time_min)
+            filters.append(pl.col("Time") >= datetime.fromisoformat(time_min))
         if time_max:
-            filters.append(pl.col("Time") <= time_max)
+            filters.append(pl.col("Time") <= datetime.fromisoformat(time_max))
         if sw_paired_only and "SW_pairing" in available:
             filters.append(pl.col("SW_pairing"))
         if normalized_only and "Norma_pos" in available:
