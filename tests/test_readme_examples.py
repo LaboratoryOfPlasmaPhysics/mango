@@ -149,14 +149,14 @@ def test_get_data_magnetosheath_southward_imf_high_pressure(client):
 def test_get_data_magnetosphere_columns_spacecraft_time(client):
     df = client.get_data(
         "magnetosphere",
-        columns=["X_gsm", "Y_gsm", "Z_gsm", "Np", "Bz"],
+        columns=["Time", "X_gsm", "Y_gsm", "Z_gsm", "Np", "Bz"],
         spacecraft=["MMS", "THA"],
         time_min="2015-01-01",
         time_max="2020-12-31",
     )
     assert isinstance(df, pl.DataFrame)
     assert len(df) == 2  # MMS(2015) and THA(2017), not C3(2021)
-    assert set(df.columns) == {"X_gsm", "Y_gsm", "Z_gsm", "Np", "Bz"}
+    assert set(df.columns) == {"Time", "X_gsm", "Y_gsm", "Z_gsm", "Np", "Bz"}
 
 
 def test_get_data_time_min_filters_correctly(client):

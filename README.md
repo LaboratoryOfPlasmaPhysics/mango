@@ -54,7 +54,7 @@ df = sm.get_data("magnetosheath", bz_imf_max=-2, pd_sw_min=3)
 # Select specific columns and spacecraft
 df = sm.get_data(
     "magnetosphere",
-    columns=["X_gsm", "Y_gsm", "Z_gsm", "Np", "Bz"],
+    columns=["Time", "X_gsm", "Y_gsm", "Z_gsm", "Np", "Bz"],
     spacecraft=["MMS1", "THA"],
     time_min="2015-01-01",
     time_max="2020-12-31",
