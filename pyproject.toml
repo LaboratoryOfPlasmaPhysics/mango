@@ -100,6 +100,7 @@ ignore = [
 
 [tool.basedpyright]
 include = ["src", "tests"]
+extraPaths = ["tests"]
 reportIgnoreCommentWithoutRule = false
 reportUnnecessaryTypeIgnoreComment = false
 reportMissingTypeStubs = false

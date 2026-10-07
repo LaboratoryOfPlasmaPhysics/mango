@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 
 from space_mango.dataset import MangoDataset, get_dataset
-from space_mango.models import RANGE_FILTERS, DatasetInfo, FilterInfo, Format, Region
+from space_mango.models import RANGE_FILTERS, Format, Region
+from space_mango.routes.schemas import DatasetInfo, FilterInfo
 
 router = APIRouter(tags=["data"])
 
