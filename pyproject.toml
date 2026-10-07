@@ -29,6 +29,7 @@ dependencies = [
     "polars>=1.0",
     "pyarrow>=18.0",
     "httpx>=0.28",
+    "platformdirs>=4.0",
 ]
 
 [project.optional-dependencies]
@@ -40,14 +41,31 @@ server = [
     "cyclopts>=4.10.1",
 ]
 
+docs = [
+    "space-mango[server,pandas,xarray]",
+    "sphinx>=8.0",
+    "myst-nb>=1.1",
+    "furo>=2024.8.6",
+    "matplotlib>=3.8",
+    "ipykernel>=6.29",
+    "nbformat>=5.10",
+]
+
+pandas = ["pandas>=2.0"]
+xarray = ["xarray>=2024.1", "pandas>=2.0"]
+
 [dependency-groups]
 dev = [
     "space-mango[server]",
+    "space-mango[docs]",
     "pytest>=9.0.2",
     "pytest-sugar>=1.1.1",
     "ruff>=0.15.1",
     "codespell>=2.4.1",
     "basedpyright>=1.38.0",
+    "pandas>=2.0",
+    "xarray>=2024.1",
+    "numpy>=1.26",
 ]
 
 [project.scripts]
@@ -67,6 +85,9 @@ source = "uv-dynamic-versioning"
 vcs = "git"
 style = "pep440"
 bump = true
+
+[tool.hatch.build.targets.sdist]
+exclude = ["docs/data", "docs/superpowers"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/space_mango"]
@@ -100,6 +121,9 @@ ignore = [
 
 [tool.basedpyright]
 include = ["src", "tests"]
+# Fail CI on type errors only; warnings stay visible in the log.
+failOnWarnings = false
+extraPaths = ["tests"]
 reportIgnoreCommentWithoutRule = false
 reportUnnecessaryTypeIgnoreComment = false
 reportMissingTypeStubs = false
@@ -109,8 +133,13 @@ reportExplicitAny = false
 reportImplicitStringConcatenation = false
 reportUnreachable = false
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom puts Depends()/Query() in defaults on purpose.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.params.Depends", "fastapi.params.Query"]
+
 [tool.codespell]
-ignore-words-list = "msh,msp"
+ignore-words-list = "msh,msp,tha"
+skip = "*/_build/*,uv.lock,.git"
 
 [tool.pytest.ini_options]
 python_files = ["*.py"]
@@ -118,3 +147,4 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 testpaths = ["tests"]
 filterwarnings = []
+markers = ["slow: builds a throwaway Sphinx site"]

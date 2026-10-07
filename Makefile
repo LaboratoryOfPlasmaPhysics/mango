@@ -12,7 +12,9 @@ install:
 	uv sync --all-extras
 
 lint:
-	uv run python devtools/lint.py
+	uv run ruff check .
+	uv run basedpyright -p pyproject.toml
+	uv run codespell
 
 test:
 	uv run pytest

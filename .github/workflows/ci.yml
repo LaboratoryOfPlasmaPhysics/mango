@@ -9,7 +9,6 @@ on:
     # Use ["**"] for CI on all branches.
     branches: ["main", "master"]
   pull_request:
-    branches: ["main", "master"]
 
 permissions:
   contents: read
@@ -56,8 +55,33 @@ jobs:
       - name: Install all dependencies
         run: uv sync --all-extras
 
-      - name: Run linting
-        run: uv run python devtools/lint.py
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Type check (basedpyright)
+        run: uv run basedpyright -p pyproject.toml
+
+      - name: Spelling (codespell)
+        run: uv run codespell
 
       - name: Run tests
-        run: uv run pytest
+        run: uv run pytest -m "not slow"
+
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.10.2"
+          enable-cache: true
+          python-version: "3.13"
+      - run: uv python install
+      - run: uv sync --all-extras
+      - name: Notebooks are stored without outputs
+        run: uv run pytest -q tests/test_notebooks_stripped.py
+      - name: Build docs (executes notebooks, warnings are errors)
+        run: uv run sphinx-build -W --keep-going -b html docs docs/_build/html
