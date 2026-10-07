@@ -75,6 +75,7 @@ class MangoClient:
         self._regions: list[str] | None = None
         self._dataset_info: dict[str, Any] | None = None
         self._describe_cache: dict[str, dict[str, Any]] = {}
+        self._spacecraft_cache: dict[str, pl.DataFrame] = {}
 
     def _get(self, path: str, params: Mapping[str, object] | None = None) -> httpx.Response:
         try:
@@ -146,6 +147,68 @@ class MangoClient:
         ds = self.dataset_info()
         return MangoResult(df, info, ds["version"], query, ds["citation"], region)
 
+    def _request_params(
+        self,
+        region: str,
+        *,
+        columns: list[str] | None,
+        spacecraft: list[str] | None,
+        start: TimeLike,
+        stop: TimeLike,
+        sw_paired_only: bool,
+        normalized_only: bool,
+        time_min: TimeLike,
+        time_max: TimeLike,
+        filters: Mapping[str, object],
+        limit: int | None = None,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        """Validate and build (HTTP params, query record), shared by get_data and count."""
+        self._check_region(region)
+        if time_min is not None:
+            warnings.warn("time_min is deprecated, use start=", FutureWarning, stacklevel=3)
+            start = start if start is not None else time_min
+        if time_max is not None:
+            warnings.warn(
+                "time_max is deprecated, use stop= (exclusive)", FutureWarning, stacklevel=3
+            )
+        self._ensure_filters_cached(region)
+        cleaned = _validate_filters(
+            filters, region, self._filter_cache[region], self._other_region_filters(exclude=region)
+        )
+        start_iso = to_iso(start, param="start")
+        stop_iso = to_iso(stop, param="stop")
+        max_iso = to_iso(time_max, param="time_max")
+        params: dict[str, object] = {"format": "arrow", **{k: str(v) for k, v in cleaned.items()}}
+        if limit is not None:
+            params["limit"] = str(limit)
+        if columns:
+            params["columns"] = columns
+        if spacecraft:
+            params["spacecraft"] = spacecraft
+        if start_iso is not None:
+            params["start"] = start_iso
+        if stop_iso is not None:
+            params["stop"] = stop_iso
+        if max_iso is not None:
+            params["time_max"] = max_iso
+        if sw_paired_only:
+            params["sw_paired_only"] = "true"
+        if normalized_only:
+            params["normalized_only"] = "true"
+        query: dict[str, object] = {
+            "region": region,
+            "columns": columns,
+            "spacecraft": spacecraft,
+            "start": start_iso,
+            "stop": stop_iso,
+            "time_max": max_iso,
+            "sw_paired_only": sw_paired_only,
+            "normalized_only": normalized_only,
+            "limit": limit,
+            **cleaned,
+        }
+        return params, query
+
     def get_data(
         self,
         region: str,
@@ -166,44 +229,155 @@ class MangoClient:
         start is inclusive, stop is exclusive. time_min/time_max are deprecated aliases
         (both inclusive).
         """
-        self._check_region(region)
-        if time_min is not None:
-            warnings.warn("time_min is deprecated, use start=", FutureWarning, stacklevel=2)
-            start = start if start is not None else time_min
-        if time_max is not None:
-            warnings.warn("time_max is deprecated, use stop= (exclusive)", FutureWarning, stacklevel=2)
-        self._ensure_filters_cached(region)
-        cleaned = _validate_filters(
-            filters, region, self._filter_cache[region], self._other_region_filters(exclude=region)
+        params, query = self._request_params(
+            region,
+            columns=columns,
+            spacecraft=spacecraft,
+            start=start,
+            stop=stop,
+            sw_paired_only=sw_paired_only,
+            normalized_only=normalized_only,
+            time_min=time_min,
+            time_max=time_max,
+            filters=filters,
+            limit=limit,
         )
-        params: dict[str, object] = {"format": "arrow", **{k: str(v) for k, v in cleaned.items()}}
-        if limit is not None:
-            params["limit"] = str(limit)
-        if columns:
-            params["columns"] = columns
-        if spacecraft:
-            params["spacecraft"] = spacecraft
-        if (s := to_iso(start, param="start")) is not None:
-            params["start"] = s
-        if (s := to_iso(stop, param="stop")) is not None:
-            params["stop"] = s
-        if (s := to_iso(time_max, param="time_max")) is not None:
-            params["time_max"] = s
-        if sw_paired_only:
-            params["sw_paired_only"] = "true"
-        if normalized_only:
-            params["normalized_only"] = "true"
         r = self._get(f"/api/v1/regions/{region}/data", params)
-        query: dict[str, object] = {
-            "region": region,
-            "columns": columns,
-            "spacecraft": spacecraft,
+        return self._result(region, pl.read_ipc(r.content), query)
+
+    def describe(self, region: str) -> pl.DataFrame:
+        """Every column of a region: unit, coordinate frame, description, matching filter."""
+        self._check_region(region)
+        cols = self._describe_raw(region)["columns"]
+        return pl.DataFrame(
+            [
+                {
+                    "column": c["name"],
+                    "unit": c["unit"],
+                    "frame": c["frame"],
+                    "description": c["description"],
+                    "filter": c["filter"],
+                    "dtype": c["dtype"],
+                }
+                for c in cols
+            ],
+            schema={
+                "column": pl.String,
+                "unit": pl.String,
+                "frame": pl.String,
+                "description": pl.String,
+                "filter": pl.String,
+                "dtype": pl.String,
+            },
+        )
+
+    def region_definition(self, region: str) -> str:
+        """Plain-language definition of a region."""
+        self._check_region(region)
+        return self._describe_raw(region)["definition"]
+
+    def spacecraft(self, region: str) -> pl.DataFrame:
+        """Spacecraft present in a region, with first/last sample time and row count."""
+        self._check_region(region)
+        if region not in self._spacecraft_cache:
+            rows = self._get(f"/api/v1/regions/{region}/spacecraft").json()
+            self._spacecraft_cache[region] = pl.DataFrame(
+                rows,
+                schema={"sc": pl.String, "start": pl.String, "stop": pl.String, "n_rows": pl.Int64},
+            ).with_columns(pl.col("start", "stop").str.to_datetime(time_unit="us"))
+        return self._spacecraft_cache[region]
+
+    def count(
+        self,
+        region: str,
+        *,
+        columns: list[str] | None = None,
+        spacecraft: list[str] | None = None,
+        start: TimeLike = None,
+        stop: TimeLike = None,
+        sw_paired_only: bool = False,
+        normalized_only: bool = False,
+        **filters: float,
+    ) -> dict[str, float]:
+        """Rows and estimated download size (MB) of the matching get_data call. Downloads nothing."""
+        params, _ = self._request_params(
+            region,
+            columns=columns,
+            spacecraft=spacecraft,
+            start=start,
+            stop=stop,
+            sw_paired_only=sw_paired_only,
+            normalized_only=normalized_only,
+            time_min=None,
+            time_max=None,
+            filters=filters,
+        )
+        params.pop("format", None)
+        c = self._get(f"/api/v1/regions/{region}/count", params).json()
+        return {"n_rows": c["n_rows"], "est_mb": c["est_bytes"] / 1e6}
+
+    def search(self, text: str) -> pl.DataFrame:
+        """Columns and filters whose name, unit or description contains `text` (case-insensitive)."""
+        needle = text.lower()
+        rows: list[dict[str, str]] = []
+        for region in self.regions():
+            d = self._describe_raw(region)
+            for c in d["columns"]:
+                rows.append(
+                    {
+                        "region": region,
+                        "kind": "column",
+                        "name": c["name"],
+                        "unit": c["unit"],
+                        "description": c["description"],
+                    }
+                )
+            for f in d["filters"]:
+                rows.append(
+                    {
+                        "region": region,
+                        "kind": "filter",
+                        "name": f["name"],
+                        "unit": f["unit"],
+                        "description": f["description"],
+                    }
+                )
+        schema = {k: pl.String for k in ("region", "kind", "name", "unit", "description")}
+        df = pl.DataFrame(rows, schema=schema)
+        hay = pl.concat_str(["name", "unit", "description"], separator=" ").str.to_lowercase()
+        return df.filter(hay.str.contains(needle, literal=True))
+
+    def timeline(
+        self, sc: str, start: TimeLike, stop: TimeLike, columns: list[str] | None = None
+    ) -> MangoResult:
+        """Every sample of one spacecraft over [start, stop) across all regions (up to 31 days),
+        with a 'region' column. Use .to_intervals() for region crossings."""
+        params: dict[str, object] = {
+            "sc": sc,
             "start": to_iso(start, param="start"),
             "stop": to_iso(stop, param="stop"),
-            "time_max": to_iso(time_max, param="time_max"),
-            "sw_paired_only": sw_paired_only,
-            "normalized_only": normalized_only,
-            "limit": limit,
-            **cleaned,
+            "format": "arrow",
         }
-        return self._result(region, pl.read_ipc(r.content), query)
+        if columns:
+            params["columns"] = columns
+        r = self._get("/api/v1/timeline", params)
+        query: dict[str, object] = {
+            "timeline": sc,
+            "start": params["start"],
+            "stop": params["stop"],
+            "columns": columns,
+        }
+        return self._result(None, pl.read_ipc(r.content), query)
+
+    def cite(self) -> str:
+        """BibTeX for the dataset version served."""
+        return self.dataset_info()["citation"]
+
+    def close(self) -> None:
+        self._http.close()
+
+    def __enter__(self) -> MangoClient:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
