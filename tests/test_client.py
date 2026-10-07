@@ -4,7 +4,7 @@ from space_mango.client import MangoFilterError, _validate_filters
 
 MAGNETOSHEATH_FILTERS = {
     "bz_imf", "by_imf", "bx_imf", "pd_sw", "np_sw", "tp_sw",
-    "vx_sw", "beta_sw", "ma_sw", "tilt",
+    "vx_sw", "beta_sw", "ma_sw",
     "x_gsm", "y_gsm", "z_gsm", "d_msh", "np", "tp", "bz",
 }
 

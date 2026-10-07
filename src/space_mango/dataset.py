@@ -4,6 +4,7 @@ from pathlib import Path
 
 import polars as pl
 
+from space_mango.errors import QueryError
 from space_mango.models import RANGE_FILTERS, Region
 
 _DEFAULT_DATA_DIR = Path("/data/mango")
@@ -19,10 +20,14 @@ def _apply_range_filters(
     for name, filt in RANGE_FILTERS.items():
         if region not in filt.regions:
             continue
-        if filt.column not in available:
-            continue
         lo = raw_params.get(f"{name}_min")
         hi = raw_params.get(f"{name}_max")
+        if (lo is not None or hi is not None) and filt.column not in available:
+            raise QueryError(
+                "filter_column_missing",
+                f"Filter '{name}' needs column '{filt.column}', "
+                f"which region '{region}' does not have.",
+            )
         if lo is not None:
             filters.append(pl.col(filt.column) >= float(lo))
         if hi is not None:

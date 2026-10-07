@@ -58,7 +58,7 @@ RANGE_FILTERS: dict[str, RangeFilter] = {
     ),
     "vx_sw": RangeFilter(
         column="Vx_sw", unit="km/s",
-        description="Solar wind velocity X (GSM) — bulk speed",
+        description="Solar wind velocity X (GSM); negative (anti-sunward), so faster wind is more negative",
         regions=frozenset({Region.magnetosphere, Region.magnetosheath}),
     ),
     "beta_sw": RangeFilter(
@@ -73,9 +73,9 @@ RANGE_FILTERS: dict[str, RangeFilter] = {
     ),
     # Dipole tilt
     "tilt": RangeFilter(
-        column="Tilt", unit="rad",
-        description="Dipole tilt angle — seasonal / hemispheric asymmetry",
-        regions=frozenset({Region.magnetosphere, Region.magnetosheath}),
+        column="tilt", unit="rad",
+        description="Dipole tilt angle (positive near June solstice)",
+        regions=frozenset({Region.magnetosphere}),
     ),
     # Spatial — raw GSM position
     "x_gsm": RangeFilter(
@@ -92,13 +92,13 @@ RANGE_FILTERS: dict[str, RangeFilter] = {
     ),
     # Spatial — normalized relative position
     "d_msp": RangeFilter(
-        column="D_msp", unit="",
-        description="Relative distance Earth(0)–magnetopause(1)",
+        column="R_norm", unit="",
+        description="Relative distance Earth(0)–magnetopause(1): |r| / R_mp",
         regions=frozenset({Region.magnetosphere}),
     ),
     "d_msh": RangeFilter(
-        column="D_msh", unit="",
-        description="Relative distance magnetopause(0)–bow shock(1)",
+        column="R_norm", unit="",
+        description="Relative distance magnetopause(0)–bow shock(1): (|r| - R_mp) / (R_bs - R_mp)",
         regions=frozenset({Region.magnetosheath}),
     ),
     # Local plasma measurements
