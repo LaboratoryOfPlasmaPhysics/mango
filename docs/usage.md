@@ -70,6 +70,8 @@ signature (tab-completion, `help()`).
 
 Pass any filter as `<name>_min=` and/or `<name>_max=` keyword arguments to `get_data` or
 `count`. A filter used in a region where it does not apply raises `MangoFilterError`.
+Values are numbers (int, float or numpy scalars); NaN and infinity are refused.
+`spacecraft=` and `columns=` take one name (`"THA"`) or a list; duplicates are dropped.
 
 | Filter (with `_min` / `_max`) | Column | Regions | Unit | Description |
 |---|---|---|---|---|
@@ -86,8 +88,8 @@ Pass any filter as `<name>_min=` and/or `<name>_max=` keyword arguments to `get_
 | `x_gsm` | `X_gsm` | all | R_E | X GSM coordinate |
 | `y_gsm` | `Y_gsm` | all | R_E | Y GSM coordinate |
 | `z_gsm` | `Z_gsm` | all | R_E | Z GSM coordinate |
-| `d_msp` | `R_norm` | magnetosphere | - | Relative distance Earth(0)–magnetopause(1): |r| / R_mp |
-| `d_msh` | `R_norm` | magnetosheath | - | Relative distance magnetopause(0)–bow shock(1): (|r| - R_mp) / (R_bs - R_mp) |
+| `d_msp` | `R_norm` | magnetosphere | - | Relative distance Earth(0)–magnetopause(1): \|r\| / R_mp |
+| `d_msh` | `R_norm` | magnetosheath | - | Relative distance magnetopause(0)–bow shock(1): (\|r\| - R_mp) / (R_bs - R_mp) |
 | `np` | `Np` | all | cm⁻³ | Local plasma density |
 | `tp` | `Tp` | all | K | Local plasma temperature |
 | `bz` | `Bz` | all | nT | Local Bz (GSM) |
@@ -95,7 +97,8 @@ Pass any filter as `<name>_min=` and/or `<name>_max=` keyword arguments to `get_
 ## Time conventions
 
 - Times are UTC, on a 5 s grid.
-- `start` is inclusive, `stop` is exclusive.
+- `start` is inclusive, `stop` is exclusive. `stop` must be after `start`
+  (else `TimeParseError`).
 - `start`/`stop` accept strings (`"2016-01"`, `"2017-01-12T10:00"`), dates or datetimes.
   `time_min`/`time_max` are deprecated aliases and emit a `FutureWarning`.
 - `mango.timeline(sc, start, stop)` returns all samples of one spacecraft across regions
@@ -112,10 +115,33 @@ notebook does not download again.
   are evicted and re-fetched when needed.
 - `mango.cache.info()` reports location, number of files, size and cap;
   `mango.cache.clear()` empties it.
-- `MangoClient(cache=False)` sends every request to the server.
+- Layout: `<cache_dir>/<version>-<checksum>/<region>/SC=<sc>/<column>/<YYYY-MM>.parquet`,
+  where `<checksum>` is the first 12 hex characters of the server's schema checksum
+  (`mango.dataset_info()["schema_checksum"]`). A new dataset version or schema starts a new
+  directory; old ones are never mixed in.
+- Downloads: only the missing (month, column) fragments are fetched, at most 6 months of one
+  spacecraft per request. Adding a column to a cached query downloads only that column.
+- `MangoClient(cache=False)` sends every request to the server and writes nothing to the
+  cache directory.
+- If the cache directory cannot be written, the client warns once (`UserWarning`) and
+  continues without caching; set `SPACE_MANGO_CACHE_DIR` to a writable directory.
 - `MangoClient(offline=True)` serves only from the cache, including the metadata stored
-  under `<cache_dir>/<version>/_meta`. It needs no network and raises `CacheMissError` as
-  soon as anything it needs (data or metadata) is not cached.
+  under `<cache_dir>/<version>-<checksum>/_meta`. It needs no network and raises
+  `CacheMissError` as soon as anything it needs (data or metadata) is not cached.
+
+**Two sizes in `count()`.** `mango.count(region, ...)` downloads nothing and returns:
+
+- `n_rows`, `est_mb`: rows matching the query and their size after server-side filtering —
+  what a `cache=False` call transfers.
+- `download_mb_estimate`: what the default cached `get_data` would download — whole months
+  of every needed column (requested, filter and flag columns), unfiltered, minus fragments
+  already in the cache. It is usually larger than `est_mb` on a cold cache (filters run
+  locally) and drops to 0 once everything is cached. It equals `est_mb` when the client
+  does not cache.
+
+**For server operators:** the cache trusts `MANGO_DATASET_VERSION`. Changing the served data
+requires bumping `MANGO_DATASET_VERSION`; a schema change alone also starts a new cache
+directory, but changed values with the same schema and version would not be re-downloaded.
 
 ## Errors
 

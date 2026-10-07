@@ -50,7 +50,7 @@ mango.magnetosheath                 # <MANGO region 'magnetosheath': Between the
 mango.describe("magnetosheath")     # column | unit | frame | description | filter | dtype
 mango.spacecraft("magnetosheath")   # sc | start | stop | n_rows
 mango.search("density")             # columns and filters matching a word
-mango.count("magnetosheath", bz_imf_max=-2)   # {'n_rows': ..., 'est_mb': ...}
+mango.count("magnetosheath", bz_imf_max=-2)   # {'n_rows', 'est_mb', 'download_mb_estimate'}
 
 # Statistical study: southward IMF, inner magnetosheath
 r = mango.magnetosheath.get_data(           # tab-complete the filters; help() lists their units
@@ -77,6 +77,12 @@ polars DataFrame); `time_min`/`time_max` are deprecated in favour of `start`/`st
 unknown spacecraft, columns or filters now raise an error instead of returning empty or
 unfiltered data. The spacecraft name for MMS is `MMS` (not `MMS1`).
 
+- **Re-check analyses that used `d_msh`, `d_msp` or `tilt`:** before this release the
+  server silently ignored these three filters and returned unfiltered data.
+- **Release order:** the 0.2 client needs a 0.2 server — deploy the server first. Against
+  an older server the client raises `ServerError` ("older than 0.2"); keep
+  `space-mango<0.2` until the server is upgraded.
+
 Full reference (columns, frames, filters, cache, errors): [docs/usage.md](docs/usage.md).
 
 ## Self-Hosting
@@ -89,6 +95,10 @@ mango serve --data-dir /path/to/parquet/data
 ./docker/build.sh
 docker run -d -p 8000:8000 -v /path/to/data:/data/mango:ro mango
 ```
+
+Clients cache downloaded data per dataset version and schema. **Changing the served data
+requires bumping `MANGO_DATASET_VERSION`**; otherwise clients keep serving the old data
+from their cache.
 
 The server supports deployment behind a reverse proxy via `MANGO_ROOT_PATH`:
 

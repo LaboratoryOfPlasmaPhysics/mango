@@ -84,7 +84,8 @@ def spacecraft(region: str) -> pl.DataFrame:
 
 
 def count(region: str, **kwargs: Any) -> dict[str, float]:
-    """Rows and estimated MB of a get_data call, without downloading."""
+    """n_rows and est_mb (after filtering) and download_mb_estimate (what the cached
+    get_data would download) of a get_data call, without downloading. See MangoClient.count."""
     return _get_default_client().count(region, **kwargs)
 
 

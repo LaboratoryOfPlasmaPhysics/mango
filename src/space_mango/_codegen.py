@@ -84,7 +84,7 @@ class {cls}(RegionAPI):
         normalized_only: bool = False,
 {params}
     ) -> dict[str, float]:
-        """Rows and estimated MB that get_data would return with the same arguments."""
+        """n_rows, est_mb and download_mb_estimate of get_data with the same arguments."""
         return self._call("count", locals())
 '''
 
