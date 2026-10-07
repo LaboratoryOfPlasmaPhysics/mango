@@ -75,7 +75,11 @@ def _api(data_dir: Path) -> TestClient:
 
 def _client(data_dir: Path) -> MangoClient:
     tc = _api(data_dir)
-    return MangoClient("http://testserver", transport=tc._transport)
+    return MangoClient(
+        "http://testserver",
+        transport=tc._transport,
+        cache_dir=data_dir.parent / f"{data_dir.name}-cache",
+    )
 
 
 def standard_rows() -> dict[str, list[Row]]:

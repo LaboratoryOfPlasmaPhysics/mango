@@ -1,19 +1,36 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from datetime import date, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
 import polars as pl
 
+from space_mango.cache import (
+    CacheInfo,
+    FragmentCache,
+    contiguous_runs,
+    default_cache_dir,
+    default_max_bytes,
+    month_start,
+    months_between,
+    next_month,
+)
 from space_mango.errors import (
+    CacheMissError,
     MangoFilterError,
     ServerError,
+    UnknownColumnError,
     UnknownRegionError,
+    UnknownSpacecraftError,
     did_you_mean,
     error_from_response,
 )
+from space_mango.filtering import build_filter_exprs, parse_time
+from space_mango.models import filters_for
 from space_mango.result import MangoResult
 from space_mango.timeparse import TimeLike, to_iso
 
@@ -59,6 +76,28 @@ def _validate_filters(
     return cleaned
 
 
+def _progress(items: list[list[date]], desc: str) -> Iterable[list[date]]:
+    """Progress bar over fragment downloads when tqdm is installed; silent otherwise."""
+    if len(items) < 2:
+        return items
+    try:
+        from tqdm.auto import tqdm  # pyright: ignore[reportMissingModuleSource]
+    except ImportError:
+        return items
+    return tqdm(items, desc=desc, unit="request")
+
+
+def _range_filters(region: str, query: Mapping[str, object]) -> dict[str, float]:
+    """The validated range filters ({"bz_imf_max": -2.0, ...}) recorded in a query."""
+    names = filters_for(region)
+    out: dict[str, float] = {}
+    for key, value in query.items():
+        name, _, suffix = key.rpartition("_")
+        if suffix in ("min", "max") and name in names and isinstance(value, float):
+            out[key] = value
+    return out
+
+
 class MangoClient:
     """Client for the MANGO dataset API."""
 
@@ -68,7 +107,18 @@ class MangoClient:
         *,
         timeout: float = 120.0,
         transport: httpx.BaseTransport | None = None,
+        cache_dir: Path | str | None = None,
+        cache: bool = True,
+        offline: bool = False,
     ) -> None:
+        """cache_dir defaults to $SPACE_MANGO_CACHE_DIR or the platform user cache directory.
+        cache=False sends every get_data to the server. offline=True serves get_data only from
+        the cache and raises CacheMissError for anything not cached."""
+        self._cache: FragmentCache = FragmentCache(
+            Path(cache_dir) if cache_dir else default_cache_dir(), default_max_bytes()
+        )
+        self._cache_enabled: bool = cache
+        self._offline: bool = offline
         self._base_url = base_url.rstrip("/")
         self._http = httpx.Client(base_url=self._base_url, timeout=timeout, transport=transport)
         self._filter_cache: dict[str, set[str]] = {}
@@ -222,12 +272,17 @@ class MangoClient:
         limit: int | None = None,
         time_min: TimeLike = None,
         time_max: TimeLike = None,
+        cache: bool | None = None,
         **filters: float,
     ) -> MangoResult:
         """Query one region. Range filters are keyword arguments: bz_imf_max=-2, d_msh_max=0.3.
 
         start is inclusive, stop is exclusive. time_min/time_max are deprecated aliases
         (both inclusive).
+
+        By default data are fetched as monthly per-column fragments, kept in a local cache
+        keyed by dataset version, and filtered locally (same filtering code as the server).
+        cache=False, or a limit, sends the query to the server instead.
         """
         params, query = self._request_params(
             region,
@@ -242,8 +297,137 @@ class MangoClient:
             filters=filters,
             limit=limit,
         )
-        r = self._get(f"/api/v1/regions/{region}/data", params)
-        return self._result(region, pl.read_ipc(r.content), query)
+        use_cache = self._offline or (
+            (self._cache_enabled if cache is None else cache) and limit is None
+        )
+        if use_cache:
+            df = self._get_data_cached(
+                region,
+                columns,
+                spacecraft,
+                query,
+                _range_filters(region, query),
+                sw_paired_only,
+                normalized_only,
+            )
+            if limit is not None:
+                df = df.head(limit)
+        else:
+            df = pl.read_ipc(self._get(f"/api/v1/regions/{region}/data", params).content)
+        return self._result(region, df, query)
+
+    def _fetch_months(
+        self, version: str, region: str, sc: str, months: list[date], columns: list[str]
+    ) -> None:
+        params: dict[str, object] = {
+            "format": "arrow",
+            "spacecraft": [sc],
+            "columns": columns,
+            "start": month_start(months[0]).isoformat(),
+            "stop": month_start(next_month(months[-1])).isoformat(),
+        }
+        df = pl.read_ipc(self._get(f"/api/v1/regions/{region}/data", params).content)
+        self._cache.write_months(version, region, sc, months, df)
+
+    def _get_data_cached(
+        self,
+        region: str,
+        columns: list[str] | None,
+        spacecraft: list[str] | None,
+        query: Mapping[str, object],
+        ranges: dict[str, float],
+        sw_paired_only: bool,
+        normalized_only: bool,
+    ) -> pl.DataFrame:
+        version = str(self.dataset_info()["version"])
+        served = [c["name"] for c in self._describe_raw(region)["columns"]]
+        for c in columns or []:
+            if c not in served:
+                raise UnknownColumnError(
+                    f"'{c}' is not a column of region '{region}'.{did_you_mean(c, served)}"
+                )
+        coverage: dict[str, tuple[datetime, datetime]] = {
+            row["sc"]: (row["start"], row["stop"]) for row in self.spacecraft(region).to_dicts()
+        }
+        for sc in spacecraft or []:
+            if sc not in coverage:
+                raise UnknownSpacecraftError(
+                    f"'{sc}' is not a spacecraft in region '{region}'."
+                    f"{did_you_mean(sc, coverage)}"
+                )
+        start_raw, stop_raw, max_raw = query.get("start"), query.get("stop"), query.get("time_max")
+        start = parse_time(str(start_raw), param="start") if start_raw else None
+        stop_inclusive = not stop_raw and bool(max_raw)
+        stop_any = stop_raw or max_raw
+        stop = parse_time(str(stop_any), param="stop") if stop_any else None
+        needed = {"Time"} | {c for c in (columns or served) if c != "SC"}
+        catalog = filters_for(region)
+        needed |= {catalog[k.rpartition("_")[0]].column for k in ranges}
+        if sw_paired_only:
+            needed.add("SW_pairing")
+        if normalized_only:
+            needed.add("Norma_pos")
+        cols = sorted(needed)
+
+        frames: list[pl.DataFrame] = []
+        for sc in spacecraft or sorted(coverage):
+            sc_start, sc_stop = coverage[sc]
+            lo = max(start, sc_start) if start else sc_start
+            hi = min(stop, sc_stop) if stop else sc_stop
+            if lo > hi:
+                continue
+            months = months_between(lo, hi)
+            missing = [m for m in months if not self._cache.has(version, region, sc, m, cols)]
+            if missing and self._offline:
+                raise CacheMissError(
+                    f"Offline mode: {len(missing)} month(s) of {sc}/{region} are not cached "
+                    f"(first: {missing[0]:%Y-%m}). Run once online, or drop offline=True."
+                )
+            for run in _progress(contiguous_runs(missing), f"Downloading {region}/{sc}"):
+                self._fetch_months(version, region, sc, run, cols)
+            for m in months:
+                frames.append(
+                    self._cache.read_month(version, region, sc, m, cols).with_columns(
+                        SC=pl.lit(sc)
+                    )
+                )
+        self._cache.evict()
+        if not frames:
+            return self._empty_frame(region, columns)
+        df = pl.concat(frames, how="vertical_relaxed")
+        exprs = build_filter_exprs(
+            region,
+            set(df.columns),
+            start=start,
+            stop=stop,
+            stop_inclusive=stop_inclusive,
+            sw_paired_only=sw_paired_only,
+            normalized_only=normalized_only,
+            ranges=ranges,
+        )
+        if exprs:
+            df = df.filter(pl.all_horizontal(exprs))
+        return df.select(columns or served)
+
+    def _empty_frame(self, region: str, columns: list[str] | None) -> pl.DataFrame:
+        """A zero-row frame with the server's schema (asked of the server, so dtypes match)."""
+        params: dict[str, object] = {
+            "format": "arrow",
+            "limit": "1",
+            "start": "1900-01-01",
+            "stop": "1900-01-02",
+        }
+        if columns:
+            params["columns"] = columns
+        return pl.read_ipc(self._get(f"/api/v1/regions/{region}/data", params).content)
+
+    def cache_info(self) -> CacheInfo:
+        """Cache location, number of fragment files, size and size cap (bytes)."""
+        return self._cache.info()
+
+    def cache_clear(self) -> None:
+        """Delete every cached fragment (all dataset versions)."""
+        self._cache.clear()
 
     def describe(self, region: str) -> pl.DataFrame:
         """Every column of a region: unit, coordinate frame, description, matching filter."""
