@@ -3,6 +3,8 @@
 
 <img width="300" height="300" alt="mangologo" src="https://github.com/user-attachments/assets/5a92150f-ce77-45a8-b15e-8f66ff7cf44b" />
 
+**Documentation:** https://space-mango.readthedocs.io
+
 
 ## Overview
 
