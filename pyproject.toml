@@ -107,6 +107,8 @@ ignore = [
 
 [tool.basedpyright]
 include = ["src", "tests"]
+# Fail CI on type errors only; warnings stay visible in the log.
+failOnWarnings = false
 extraPaths = ["tests"]
 reportIgnoreCommentWithoutRule = false
 reportUnnecessaryTypeIgnoreComment = false
