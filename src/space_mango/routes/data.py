@@ -6,8 +6,22 @@ from fastapi.responses import StreamingResponse
 
 from space_mango.dataset import MangoDataset, get_dataset
 from space_mango.filtering import time_window
-from space_mango.models import RANGE_FILTERS, Format, Region
-from space_mango.routes.schemas import DatasetInfo, FilterInfo
+from space_mango.models import (
+    REGIONS,
+    Format,
+    Region,
+    columns_for,
+    filter_for_column,
+    filters_for,
+)
+from space_mango.routes.schemas import (
+    ColumnDescription,
+    CountResult,
+    DatasetInfo,
+    FilterInfo,
+    RegionDescription,
+    SpacecraftCoverage,
+)
 
 router = APIRouter(tags=["data"])
 
@@ -33,9 +47,7 @@ def region_columns(region: Region, ds: MangoDataset = Depends(get_dataset)) -> l
     return ds[region].collect_schema().names()
 
 
-@router.get("/regions/{region}/filters")
-def region_filters(region: Region) -> list[FilterInfo]:
-    """List available range filters for this region."""
+def _filter_infos(region: Region) -> list[FilterInfo]:
     return [
         FilterInfo(
             name=name,
@@ -44,9 +56,96 @@ def region_filters(region: Region) -> list[FilterInfo]:
             description=f.description,
             params=f"{name}_min=..&{name}_max=..",
         )
-        for name, f in RANGE_FILTERS.items()
-        if region in f.regions
+        for name, f in filters_for(region).items()
     ]
+
+
+@router.get("/regions/{region}/filters")
+def region_filters(region: Region) -> list[FilterInfo]:
+    """List available range filters for this region."""
+    return _filter_infos(region)
+
+
+@router.get("/regions/{region}/describe")
+def region_describe(region: Region, ds: MangoDataset = Depends(get_dataset)) -> RegionDescription:
+    schema = ds[region].collect_schema()
+    catalog = columns_for(region)
+    cols: list[ColumnDescription] = []
+    for name, dtype in schema.items():
+        info = catalog.get(name)
+        cols.append(
+            ColumnDescription(
+                name=name,
+                dtype=str(dtype),
+                unit=info.unit if info else "",
+                frame=info.frame if info else "",
+                description=info.description_for(region) if info else "",
+                computed=info.computed if info else "",
+                filter=filter_for_column(region, name),
+            )
+        )
+    return RegionDescription(
+        region=region.value,
+        definition=REGIONS[region].definition,
+        columns=cols,
+        filters=_filter_infos(region),
+    )
+
+
+@router.get("/regions/{region}/spacecraft")
+def region_spacecraft(
+    region: Region, ds: MangoDataset = Depends(get_dataset)
+) -> list[SpacecraftCoverage]:
+    return [
+        SpacecraftCoverage(**row)
+        for row in ds.coverage(region).rename({"SC": "sc"}).to_dicts()
+    ]
+
+
+@router.get("/regions/{region}/count")
+def region_count(
+    request: Request,
+    region: Region,
+    columns: list[str] | None = Query(None),
+    spacecraft: list[str] | None = Query(None),
+    start: str | None = Query(None),
+    stop: str | None = Query(None),
+    time_min: str | None = Query(None),
+    time_max: str | None = Query(None),
+    sw_paired_only: bool = Query(False),
+    normalized_only: bool = Query(False),
+    ds: MangoDataset = Depends(get_dataset),
+) -> CountResult:
+    """Rows a /data request with the same parameters would return, and an estimated size."""
+    start_dt, stop_dt, stop_inclusive = time_window(start, stop, time_min, time_max)
+    n_rows, est_bytes = ds.count(
+        region,
+        dict(request.query_params),
+        columns=columns,
+        spacecraft=spacecraft,
+        start=start_dt,
+        stop=stop_dt,
+        stop_inclusive=stop_inclusive,
+        sw_paired_only=sw_paired_only,
+        normalized_only=normalized_only,
+    )
+    return CountResult(n_rows=n_rows, est_bytes=est_bytes)
+
+
+def frame_response(df: pl.DataFrame, fmt: Format, name: str) -> StreamingResponse:
+    if fmt == Format.csv:
+        return StreamingResponse(
+            iter([df.write_csv()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=mango_{name}.csv"},
+        )
+    buf = io.BytesIO()
+    df.write_ipc(buf)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="application/vnd.apache.arrow.stream",
+        headers={"Content-Disposition": f"attachment; filename=mango_{name}.arrow"},
+    )
 
 
 @router.get("/regions/{region}/data")
@@ -93,18 +192,4 @@ def region_data(
         limit=limit,
     )
 
-    if format == Format.csv:
-        buf = df.write_csv()
-        return StreamingResponse(
-            iter([buf]),
-            media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename=mango_{region}.csv"},
-        )
-
-    buf = io.BytesIO()
-    df.write_ipc(buf)
-    return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="application/vnd.apache.arrow.stream",
-        headers={"Content-Disposition": f"attachment; filename=mango_{region}.arrow"},
-    )
+    return frame_response(df, format, region.value)
