@@ -15,6 +15,7 @@ def test_there_are_notebooks():
 @pytest.mark.parametrize("path", NOTEBOOKS, ids=lambda p: p.name)
 def test_notebook_has_no_outputs(path):
     nb = json.loads(path.read_text())
+    assert nb["metadata"]["kernelspec"]["name"] == "python3"
     for cell in nb["cells"]:
         if cell["cell_type"] == "code":
             assert cell.get("outputs") == [], f"{path.name}: strip outputs (cell {cell.get('id')})"
