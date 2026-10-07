@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Mapping
+from typing import Any
 
 import httpx
 import polars as pl
@@ -13,6 +14,7 @@ from space_mango.errors import (
     did_you_mean,
     error_from_response,
 )
+from space_mango.result import MangoResult
 from space_mango.timeparse import TimeLike, to_iso
 
 DEFAULT_URL = "http://sciqlop.lpp.polytechnique.fr/mango/"
@@ -71,6 +73,8 @@ class MangoClient:
         self._http = httpx.Client(base_url=self._base_url, timeout=timeout, transport=transport)
         self._filter_cache: dict[str, set[str]] = {}
         self._regions: list[str] | None = None
+        self._dataset_info: dict[str, Any] | None = None
+        self._describe_cache: dict[str, dict[str, Any]] = {}
 
     def _get(self, path: str, params: Mapping[str, object] | None = None) -> httpx.Response:
         try:
@@ -120,6 +124,28 @@ class MangoClient:
         r = self._get(f"/api/v1/regions/{region}/filters")
         return r.json()
 
+    def dataset_info(self) -> dict[str, Any]:
+        """Dataset version, title, citation (BibTeX), DOI and schema checksum."""
+        if self._dataset_info is None:
+            self._dataset_info = self._get("/api/v1/dataset").json()
+        return self._dataset_info or {}
+
+    def _describe_raw(self, region: str) -> dict[str, Any]:
+        if region not in self._describe_cache:
+            self._describe_cache[region] = self._get(f"/api/v1/regions/{region}/describe").json()
+        return self._describe_cache[region]
+
+    def _result(
+        self, region: str | None, df: pl.DataFrame, query: dict[str, object]
+    ) -> MangoResult:
+        regions = [region] if region else self.regions()
+        info: dict[str, dict[str, str]] = {}
+        for r in regions:
+            for c in self._describe_raw(r)["columns"]:
+                info.setdefault(c["name"], {k: c[k] for k in ("unit", "frame", "description")})
+        ds = self.dataset_info()
+        return MangoResult(df, info, ds["version"], query, ds["citation"], region)
+
     def get_data(
         self,
         region: str,
@@ -134,7 +160,7 @@ class MangoClient:
         time_min: TimeLike = None,
         time_max: TimeLike = None,
         **filters: float,
-    ) -> pl.DataFrame:
+    ) -> MangoResult:
         """Query one region. Range filters are keyword arguments: bz_imf_max=-2, d_msh_max=0.3.
 
         start is inclusive, stop is exclusive. time_min/time_max are deprecated aliases
@@ -168,4 +194,16 @@ class MangoClient:
         if normalized_only:
             params["normalized_only"] = "true"
         r = self._get(f"/api/v1/regions/{region}/data", params)
-        return pl.read_ipc(r.content)
+        query: dict[str, object] = {
+            "region": region,
+            "columns": columns,
+            "spacecraft": spacecraft,
+            "start": to_iso(start, param="start"),
+            "stop": to_iso(stop, param="stop"),
+            "time_max": to_iso(time_max, param="time_max"),
+            "sw_paired_only": sw_paired_only,
+            "normalized_only": normalized_only,
+            "limit": limit,
+            **cleaned,
+        }
+        return self._result(region, pl.read_ipc(r.content), query)

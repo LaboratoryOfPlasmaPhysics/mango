@@ -40,6 +40,9 @@ server = [
     "cyclopts>=4.10.1",
 ]
 
+pandas = ["pandas>=2.0"]
+xarray = ["xarray>=2024.1", "pandas>=2.0"]
+
 [dependency-groups]
 dev = [
     "space-mango[server]",

@@ -1,6 +1,5 @@
 """Tests covering the README Quick Start examples using synthetic fixture data."""
 
-import polars as pl
 import pytest
 
 import space_mango as sm
@@ -16,7 +15,7 @@ def test_regions_returns_all_three(client):
 
 def test_get_data_magnetosheath_southward_imf_high_pressure(client):
     df = client.get_data("magnetosheath", bz_imf_max=-2, pd_sw_min=3)
-    assert isinstance(df, pl.DataFrame)
+    assert isinstance(df, sm.MangoResult)
     assert len(df) > 0
     assert all(df["Bz_imf"] <= -2)
     assert all(df["Pd_sw"] >= 3)
@@ -33,7 +32,7 @@ def test_get_data_magnetosphere_columns_spacecraft_time(client):
             time_min="2015-01-01",
             time_max="2020-12-31",
         )
-    assert isinstance(df, pl.DataFrame)
+    assert isinstance(df, sm.MangoResult)
     assert len(df) == 2  # MMS(2015) and THA(2017), not C3(2021)
     assert set(df.columns) == {"Time", "X_gsm", "Y_gsm", "Z_gsm", "Np", "Bz"}
 

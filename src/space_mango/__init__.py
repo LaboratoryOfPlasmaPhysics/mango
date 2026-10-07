@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from space_mango.client import MangoClient
 from space_mango.errors import (
     CacheMissError,
@@ -13,13 +11,12 @@ from space_mango.errors import (
     UnknownRegionError,
     UnknownSpacecraftError,
 )
+from space_mango.result import MangoResult
 from space_mango.timeparse import TimeLike
-
-if TYPE_CHECKING:
-    import polars as pl
 
 __all__ = [
     "MangoClient",
+    "MangoResult",
     "CacheMissError",
     "MangoError",
     "MangoFilterError",
@@ -57,8 +54,8 @@ def get_data(
     time_min: TimeLike = None,
     time_max: TimeLike = None,
     **filters: float,
-) -> pl.DataFrame:
-    """Query the MANGO dataset and return a polars DataFrame.
+) -> MangoResult:
+    """Query the MANGO dataset and return a MangoResult (data plus metadata).
 
     Range filters are passed as keyword arguments:
         mango.get_data("magnetosheath", bz_imf_max=-2, pd_sw_min=3)

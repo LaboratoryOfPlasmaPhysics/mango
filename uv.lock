@@ -921,12 +921,19 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+pandas = [
+    { name = "pandas" },
+]
 server = [
     { name = "cyclopts" },
     { name = "fastapi" },
     { name = "gunicorn" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "uvicorn-worker" },
+]
+xarray = [
+    { name = "pandas" },
+    { name = "xarray" },
 ]
 
 [package.dev-dependencies]
@@ -949,12 +956,15 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115" },
     { name = "gunicorn", marker = "extra == 'server'", specifier = ">=23.0" },
     { name = "httpx", specifier = ">=0.28" },
+    { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2.0" },
+    { name = "pandas", marker = "extra == 'xarray'", specifier = ">=2.0" },
     { name = "polars", specifier = ">=1.0" },
     { name = "pyarrow", specifier = ">=18.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.34" },
     { name = "uvicorn-worker", marker = "extra == 'server'", specifier = ">=0.3" },
+    { name = "xarray", marker = "extra == 'xarray'", specifier = ">=2024.1" },
 ]
-provides-extras = ["server"]
+provides-extras = ["pandas", "server", "xarray"]
 
 [package.metadata.requires-dev]
 dev = [
