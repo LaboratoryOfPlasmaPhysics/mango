@@ -104,6 +104,12 @@ Values are numbers (int, float or numpy scalars); NaN and infinity are refused.
 - `mango.timeline(sc, start, stop)` returns all samples of one spacecraft across regions
   and is limited to 31 days.
 
+## Choosing the server
+
+The module-level functions use the public MANGO server. Set `$SPACE_MANGO_URL` to point them
+at another server (for example a self-hosted one), or pass `base_url=` to
+`MangoClient(...)`.
+
 ## Cache
 
 `get_data` stores results on disk as per-column monthly Parquet fragments, so re-running a

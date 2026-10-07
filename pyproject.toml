@@ -86,6 +86,9 @@ vcs = "git"
 style = "pep440"
 bump = true
 
+[tool.hatch.build.targets.sdist]
+exclude = ["docs/data", "docs/superpowers"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/space_mango"]
 

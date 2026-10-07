@@ -23,6 +23,11 @@
 
 .. autofunction:: space_mango.dataset_info
 
+.. py:data:: space_mango.cache
+
+   Handle on the default client's on-disk cache: ``mango.cache.info()`` returns its location,
+   number of files, size and size cap; ``mango.cache.clear()`` empties it.
+
 .. autoclass:: space_mango.MangoClient
    :members:
 

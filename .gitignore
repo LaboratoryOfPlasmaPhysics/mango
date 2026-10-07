@@ -177,6 +177,3 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-
-# Sphinx build output
-docs/_build/

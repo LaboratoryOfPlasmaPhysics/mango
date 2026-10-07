@@ -2,6 +2,9 @@
 
 ## 0.2
 
+The default server URL can be overridden with the `SPACE_MANGO_URL` environment variable
+(for example to use a self-hosted server).
+
 `get_data` returns a `MangoResult` (use `.to_polars()` for the previous
 polars DataFrame); `time_min`/`time_max` are deprecated in favour of `start`/`stop`;
 unknown spacecraft, columns or filters now raise an error instead of returning empty or

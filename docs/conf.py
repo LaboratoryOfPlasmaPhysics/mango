@@ -14,7 +14,7 @@ import _docs_server  # noqa: E402
 project = "MANGO"
 author = "Laboratoire de Physique des Plasmas"
 release = _version("space-mango")
-extensions = ["myst_nb", "sphinx.ext.autodoc", "sphinx.ext.napoleon", "sphinx.ext.intersphinx"]
+extensions = ["myst_nb", "sphinx.ext.autodoc", "sphinx.ext.napoleon"]
 html_theme = "furo"
 html_title = "MANGO"
 exclude_patterns = ["_build", "superpowers", "data", "**/.ipynb_checkpoints"]
@@ -25,10 +25,6 @@ nb_execution_timeout = 300
 nb_execution_show_tb = True
 autodoc_member_order = "bysource"
 autodoc_typehints = "description"
-intersphinx_mapping = {
-    "python": ("https://docs.python.org/3", None),
-    "polars": ("https://docs.pola.rs/api/python/stable", None),
-}
 
 _proc, _url = _docs_server.start(DOCS / "data")
 atexit.register(_docs_server.stop, _proc)
