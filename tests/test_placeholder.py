@@ -1,9 +1,9 @@
 import tempfile
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 
 import polars as pl
-import pytest
 from fastapi.testclient import TestClient
 
 from space_mango.app import create_app
@@ -62,7 +62,7 @@ def test_filters_solar_wind():
     assert "np" in names
 
 
-def _write_test_region(base: Path, region: str, rows: list[dict]) -> None:
+def _write_test_region(base: Path, region: str, rows: Sequence[Mapping[str, object]]) -> None:
     """Write a small Hive-partitioned Parquet dataset for testing."""
     df = pl.DataFrame(rows)
     for sc in df["SC"].unique().to_list():

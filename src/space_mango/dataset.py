@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 
@@ -9,7 +10,7 @@ _DEFAULT_DATA_DIR = Path("/data/mango")
 
 
 def _apply_range_filters(
-    lf: pl.LazyFrame, region: Region, raw_params: dict[str, str | None]
+    lf: pl.LazyFrame, region: Region, raw_params: Mapping[str, str | None]
 ) -> pl.LazyFrame:
     """Apply all range filters from the catalog that have min/max values set."""
     available = set(lf.collect_schema().names())
@@ -53,7 +54,7 @@ class MangoDataset:
     def query(
         self,
         region: Region,
-        raw_params: dict[str, str | None],
+        raw_params: Mapping[str, str | None],
         *,
         columns: list[str] | None = None,
         spacecraft: list[str] | None = None,

@@ -109,8 +109,12 @@ reportExplicitAny = false
 reportImplicitStringConcatenation = false
 reportUnreachable = false
 
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom puts Depends()/Query() in defaults on purpose.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.params.Depends", "fastapi.params.Query"]
+
 [tool.codespell]
-ignore-words-list = "msh,msp"
+ignore-words-list = "msh,msp,tha"
 
 [tool.pytest.ini_options]
 python_files = ["*.py"]

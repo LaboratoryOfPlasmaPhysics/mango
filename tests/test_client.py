@@ -1,4 +1,5 @@
 import tempfile
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -11,7 +12,6 @@ import space_mango as sm
 from space_mango.app import create_app
 from space_mango.client import MangoFilterError, _validate_filters
 from space_mango.dataset import MangoDataset, get_dataset
-
 
 MAGNETOSHEATH_FILTERS = {
     "bz_imf", "by_imf", "bx_imf", "pd_sw", "np_sw", "tp_sw",
@@ -75,7 +75,7 @@ def test_validate_filters_non_numeric():
         )
 
 
-def _write_test_region(base: Path, region: str, rows: list[dict]) -> None:
+def _write_test_region(base: Path, region: str, rows: Sequence[Mapping[str, object]]) -> None:
     df = pl.DataFrame(rows)
     for sc in df["SC"].unique().to_list():
         sc_dir = base / region / f"SC={sc}"

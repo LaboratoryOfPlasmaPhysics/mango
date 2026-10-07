@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-import polars as pl
+from collections.abc import Mapping
+
 import httpx
+import polars as pl
 
 DEFAULT_URL = "http://sciqlop.lpp.polytechnique.fr/mango/"
 
@@ -11,7 +13,7 @@ class MangoFilterError(Exception):
 
 
 def _validate_filters(
-    filters: dict[str, object],
+    filters: Mapping[str, object],
     region: str,
     valid_names: set[str],
     other_regions: dict[str, set[str]],
@@ -36,9 +38,11 @@ def _validate_filters(
                 f"'{key}' is not a valid filter for region '{region}'.\n"
                 f"Available filters: {available}{hint}"
             )
+        if isinstance(value, bool) or not isinstance(value, int | float | str):
+            raise MangoFilterError(f"Filter '{key}' value must be numeric, got {value!r}.")
         try:
-            cleaned[key] = float(value)  # type: ignore[arg-type]
-        except (TypeError, ValueError):
+            cleaned[key] = float(value)
+        except ValueError:
             raise MangoFilterError(
                 f"Filter '{key}' value must be numeric, got {value!r}."
             ) from None
@@ -76,7 +80,7 @@ class MangoClient:
         r.raise_for_status()
         return r.json()
 
-    def filters(self, region: str) -> list[dict]:
+    def filters(self, region: str) -> list[dict[str, object]]:
         """List available filters for a region (name, column, unit, description)."""
         r = self._http.get(f"/api/v1/regions/{region}/filters")
         r.raise_for_status()

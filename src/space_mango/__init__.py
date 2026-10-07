@@ -66,6 +66,6 @@ def columns(region: str) -> list[str]:
     return _get_default_client().columns(region)
 
 
-def filters(region: str) -> list[dict]:
+def filters(region: str) -> list[dict[str, object]]:
     """List available filters for a region."""
     return _get_default_client().filters(region)

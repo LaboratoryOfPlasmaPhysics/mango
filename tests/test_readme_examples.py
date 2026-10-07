@@ -1,6 +1,6 @@
 """Tests covering the README Quick Start examples using synthetic fixture data."""
 
-import tempfile
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -14,7 +14,7 @@ from space_mango.app import create_app
 from space_mango.dataset import MangoDataset, get_dataset
 
 
-def _write_region(base: Path, region: str, rows: list[dict]) -> None:
+def _write_region(base: Path, region: str, rows: Sequence[Mapping[str, object]]) -> None:
     df = pl.DataFrame(rows)
     for sc in df["SC"].unique().to_list():
         sc_dir = base / region / f"SC={sc}"
@@ -283,5 +283,5 @@ def test_filters_magnetosphere_has_d_msp(client):
 # --- Error handling ---
 
 def test_get_data_invalid_region(client):
-    with pytest.raises(Exception):
+    with pytest.raises(httpx.HTTPStatusError):
         client.get_data("invalid_region")

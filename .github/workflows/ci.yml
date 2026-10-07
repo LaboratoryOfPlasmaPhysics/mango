@@ -56,8 +56,14 @@ jobs:
       - name: Install all dependencies
         run: uv sync --all-extras
 
-      - name: Run linting
-        run: uv run python devtools/lint.py
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Type check (basedpyright)
+        run: uv run basedpyright -p pyproject.toml
+
+      - name: Spelling (codespell)
+        run: uv run codespell
 
       - name: Run tests
         run: uv run pytest

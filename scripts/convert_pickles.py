@@ -29,7 +29,7 @@ ROW_GROUP_SIZE = 500_000
 
 def _pickle_to_tmp_parquet(pickle_path: Path) -> Path:
     """Pass 1: load pickle, write a single temporary Parquet file, free memory."""
-    print(f"  pass 1: loading pickle ...")
+    print("  pass 1: loading pickle ...")
     with open(pickle_path, "rb") as f:
         df = pickle.load(f)
 
