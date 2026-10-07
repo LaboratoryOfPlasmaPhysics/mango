@@ -2,6 +2,7 @@ import io
 from datetime import datetime
 
 import polars as pl
+import pytest
 
 from space_mango.dataset import MangoDataset
 
@@ -96,3 +97,70 @@ def test_check_catalog_reports_drift(make_row, make_dataset):
 
 def test_check_catalog_clean_on_served_schema(dataset_dir):
     assert MangoDataset(dataset_dir).check_catalog() == []
+
+
+# --- final-review fix wave: the server never silently ignores a parameter ------------------
+
+@pytest.mark.parametrize("endpoint", ["data", "count"])
+def test_data_and_count_reject_sc(api, endpoint):
+    r = api.get(f"/api/v1/regions/magnetosheath/{endpoint}", params={"sc": "THA"})
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["error"] == "unknown_filter" and "'sc'" in detail["message"]
+    assert "spacecraft" in detail["valid"] and "bz_imf_max" in detail["valid"]
+
+
+@pytest.mark.parametrize("param", ["limit", "format"])
+def test_count_rejects_data_only_params(api, param):
+    r = api.get("/api/v1/regions/magnetosheath/count", params={param: "1"})
+    assert r.status_code == 400 and r.json()["detail"]["error"] == "unknown_filter"
+
+
+@pytest.mark.parametrize("extra", [{"bz_imf_max": "-2"}, {"spacecraft": "THA"}, {"limit": "3"}])
+def test_timeline_rejects_unknown_params(api, extra):
+    params = {"sc": "THA", "start": "2016-03-15", "stop": "2016-03-16", **extra}
+    r = api.get("/api/v1/timeline", params=params)
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["error"] == "unknown_parameter"
+    assert detail["valid"] == ["columns", "format", "sc", "start", "stop"]
+
+
+@pytest.mark.parametrize("endpoint", ["data", "count"])
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "NaN"])
+def test_non_finite_filter_values_rejected(api, endpoint, value):
+    r = api.get(f"/api/v1/regions/magnetosheath/{endpoint}", params={"bz_imf_max": value})
+    assert r.status_code == 400 and r.json()["detail"]["error"] == "bad_filter_value"
+
+
+@pytest.mark.parametrize("endpoint", ["data", "count"])
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"start": "2017-01-01", "stop": "2017-01-01"},
+        {"start": "2018-01-01", "stop": "2017-01-01"},
+        {"time_min": "2018-01-01", "time_max": "2017-01-01"},
+    ],
+)
+def test_start_not_before_stop_rejected(api, endpoint, params):
+    r = api.get(f"/api/v1/regions/magnetosheath/{endpoint}", params=params)
+    assert r.status_code == 400 and r.json()["detail"]["error"] == "bad_time"
+
+
+def test_legacy_inclusive_single_instant_is_allowed(api):
+    t = "2016-03-15T10:00:00"
+    r = api.get("/api/v1/regions/magnetosheath/count", params={"time_min": t, "time_max": t})
+    assert r.status_code == 200 and r.json()["n_rows"] == 1
+
+
+def test_duplicate_columns_are_deduplicated_by_server(api):
+    r = api.get("/api/v1/regions/magnetosheath/data",
+                params={"columns": ["Time", "Np", "Time"], "format": "arrow"})
+    assert r.status_code == 200
+    assert pl.read_ipc(io.BytesIO(r.content)).columns == ["Time", "Np"]
+    c = api.get("/api/v1/regions/magnetosheath/count", params={"columns": ["Np", "Np"]})
+    assert c.status_code == 200
+    t = api.get("/api/v1/timeline", params={"sc": "THA", "start": "2016-03-15",
+                                            "stop": "2016-03-16", "columns": ["Np", "Np"]})
+    assert t.status_code == 200
+    assert pl.read_ipc(io.BytesIO(t.content)).columns == ["Time", "SC", "Np", "region"]

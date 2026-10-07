@@ -101,3 +101,11 @@ def test_get_data_rejects_pandas_nat(client, cache):
     pd = pytest.importorskip("pandas")
     with pytest.raises(TimeParseError):
         client.get_data("magnetosheath", start=pd.NaT, cache=cache)
+
+
+@pytest.mark.parametrize("cache", [True, False])
+def test_client_rejects_start_not_before_stop(client, cache):
+    with pytest.raises(TimeParseError, match="after"):
+        client.get_data("magnetosheath", start="2018-01-01", stop="2017-01-01", cache=cache)
+    with pytest.raises(TimeParseError, match="after"):
+        client.count("magnetosheath", start="2017-01-01", stop="2017-01-01")

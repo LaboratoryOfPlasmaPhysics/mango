@@ -61,6 +61,7 @@ _CODE_TO_ERROR: dict[str, type[MangoError]] = {
     "unknown_spacecraft": UnknownSpacecraftError,
     "unknown_column": UnknownColumnError,
     "unknown_filter": MangoFilterError,
+    "unknown_parameter": MangoFilterError,
     "bad_filter_value": MangoFilterError,
     "filter_column_missing": MangoFilterError,
     "flag_unavailable": MangoFilterError,

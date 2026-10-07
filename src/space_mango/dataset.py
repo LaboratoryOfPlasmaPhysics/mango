@@ -6,7 +6,7 @@ from pathlib import Path
 import polars as pl
 
 from space_mango.errors import QueryError, did_you_mean
-from space_mango.filtering import build_filter_exprs, parse_range_params
+from space_mango.filtering import COUNT_PARAMS, DATA_PARAMS, build_filter_exprs, parse_range_params
 from space_mango.models import Region, columns_for, filters_for
 
 _DEFAULT_DATA_DIR = Path("/data/mango")
@@ -62,8 +62,11 @@ class MangoDataset:
         stop_inclusive: bool = False,
         sw_paired_only: bool = False,
         normalized_only: bool = False,
+        params: frozenset[str] = DATA_PARAMS,
     ) -> pl.LazyFrame:
         lf = self._lazy(region)
+        if columns:
+            columns = list(dict.fromkeys(columns))
         available = set(lf.collect_schema().names())
         if spacecraft:
             known = self.spacecraft(region)
@@ -93,7 +96,7 @@ class MangoDataset:
             stop_inclusive=stop_inclusive,
             sw_paired_only=sw_paired_only,
             normalized_only=normalized_only,
-            ranges=parse_range_params(region, raw_params),
+            ranges=parse_range_params(region, raw_params, params),
         )
         if exprs:
             lf = lf.filter(pl.all_horizontal(exprs))
@@ -168,6 +171,7 @@ class MangoDataset:
             stop_inclusive=stop_inclusive,
             sw_paired_only=sw_paired_only,
             normalized_only=normalized_only,
+            params=COUNT_PARAMS,
         )
         n_rows = int(lf.select(pl.len()).collect().item())
         row_bytes = sum(_dtype_bytes(dt) for dt in lf.collect_schema().dtypes())
@@ -193,6 +197,8 @@ class MangoDataset:
                 every,
             )
         available = {c for r in regions for c in self.columns(r)}
+        if columns:
+            columns = list(dict.fromkeys(columns))
         for c in columns or []:
             if c not in available:
                 raise QueryError(

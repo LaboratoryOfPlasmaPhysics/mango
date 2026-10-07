@@ -35,7 +35,7 @@ from space_mango.errors import (
     error_from_query,
     error_from_response,
 )
-from space_mango.filtering import build_filter_exprs, parse_time
+from space_mango.filtering import build_filter_exprs, time_window
 from space_mango.models import filters_for
 from space_mango.result import MangoResult
 from space_mango.timeparse import TimeLike, to_iso
@@ -128,6 +128,10 @@ def _parse_dtype(text: str) -> pl.DataType:
     if isinstance(dtype, type) and issubclass(dtype, pl.DataType):
         return dtype()
     raise MangoError(f"Cannot interpret column dtype {text!r} served by /describe.")
+
+
+def _opt_str(value: object) -> str | None:
+    return None if value is None else str(value)
 
 
 def _range_filters(region: str, query: Mapping[str, object]) -> dict[str, float]:
@@ -308,6 +312,10 @@ class MangoClient:
         start_iso = to_iso(start, param="start")
         stop_iso = to_iso(stop, param="stop")
         max_iso = to_iso(time_max, param="time_max")
+        try:
+            time_window(start_iso, stop_iso, None, max_iso)  # refuse an empty window early
+        except QueryError as e:
+            raise error_from_query(e) from None
         params: dict[str, object] = {"format": "arrow", **{k: str(v) for k, v in cleaned.items()}}
         if limit is not None:
             params["limit"] = str(limit)
@@ -437,11 +445,10 @@ class MangoClient:
                     f"'{sc}' is not a spacecraft in region '{region}'."
                     f"{did_you_mean(sc, coverage)}"
                 )
-        start_raw, stop_raw, max_raw = query.get("start"), query.get("stop"), query.get("time_max")
-        start = parse_time(str(start_raw), param="start") if start_raw else None
-        stop_inclusive = not stop_raw and bool(max_raw)
-        stop_any = stop_raw or max_raw
-        stop = parse_time(str(stop_any), param="stop") if stop_any else None
+        start, stop, stop_inclusive = time_window(
+            _opt_str(query.get("start")), _opt_str(query.get("stop")), None,
+            _opt_str(query.get("time_max")),
+        )
         needed = {"Time"} | {c for c in (columns or served) if c != "SC"}
         catalog = filters_for(region)
         needed |= {catalog[k.rpartition("_")[0]].column for k in ranges}
