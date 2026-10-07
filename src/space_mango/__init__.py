@@ -2,14 +2,32 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from space_mango.client import MangoClient, MangoFilterError
+from space_mango.client import MangoClient
+from space_mango.errors import (
+    CacheMissError,
+    MangoError,
+    MangoFilterError,
+    ServerError,
+    TimeParseError,
+    UnknownColumnError,
+    UnknownRegionError,
+    UnknownSpacecraftError,
+)
+from space_mango.timeparse import TimeLike
 
 if TYPE_CHECKING:
     import polars as pl
 
 __all__ = [
     "MangoClient",
+    "CacheMissError",
+    "MangoError",
     "MangoFilterError",
+    "ServerError",
+    "TimeParseError",
+    "UnknownColumnError",
+    "UnknownRegionError",
+    "UnknownSpacecraftError",
     "get_data",
     "regions",
     "columns",
@@ -31,11 +49,13 @@ def get_data(
     *,
     columns: list[str] | None = None,
     spacecraft: list[str] | None = None,
-    time_min: str | None = None,
-    time_max: str | None = None,
+    start: TimeLike = None,
+    stop: TimeLike = None,
     sw_paired_only: bool = False,
     normalized_only: bool = False,
     limit: int | None = None,
+    time_min: TimeLike = None,
+    time_max: TimeLike = None,
     **filters: float,
 ) -> pl.DataFrame:
     """Query the MANGO dataset and return a polars DataFrame.
@@ -43,15 +63,21 @@ def get_data(
     Range filters are passed as keyword arguments:
         mango.get_data("magnetosheath", bz_imf_max=-2, pd_sw_min=3)
     """
+    legacy: dict[str, TimeLike] = {}
+    if time_min is not None:
+        legacy["time_min"] = time_min
+    if time_max is not None:
+        legacy["time_max"] = time_max
     return _get_default_client().get_data(
         region,
         columns=columns,
         spacecraft=spacecraft,
-        time_min=time_min,
-        time_max=time_max,
+        start=start,
+        stop=stop,
         sw_paired_only=sw_paired_only,
         normalized_only=normalized_only,
         limit=limit,
+        **legacy,  # pyright: ignore[reportArgumentType]
         **filters,
     )
 

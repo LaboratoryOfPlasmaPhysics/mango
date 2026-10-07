@@ -1,8 +1,9 @@
 """Tests covering the README Quick Start examples using synthetic fixture data."""
 
-import httpx
 import polars as pl
 import pytest
+
+import space_mango as sm
 
 # --- README example: sm.regions() ---
 
@@ -24,32 +25,36 @@ def test_get_data_magnetosheath_southward_imf_high_pressure(client):
 # --- README example: sm.get_data("magnetosphere", columns=..., spacecraft=..., time_min/max=...) ---
 
 def test_get_data_magnetosphere_columns_spacecraft_time(client):
-    df = client.get_data(
-        "magnetosphere",
-        columns=["Time", "X_gsm", "Y_gsm", "Z_gsm", "Np", "Bz"],
-        spacecraft=["MMS", "THA"],
-        time_min="2015-01-01",
-        time_max="2020-12-31",
-    )
+    with pytest.warns(FutureWarning):
+        df = client.get_data(
+            "magnetosphere",
+            columns=["Time", "X_gsm", "Y_gsm", "Z_gsm", "Np", "Bz"],
+            spacecraft=["MMS", "THA"],
+            time_min="2015-01-01",
+            time_max="2020-12-31",
+        )
     assert isinstance(df, pl.DataFrame)
     assert len(df) == 2  # MMS(2015) and THA(2017), not C3(2021)
     assert set(df.columns) == {"Time", "X_gsm", "Y_gsm", "Z_gsm", "Np", "Bz"}
 
 
 def test_get_data_time_min_filters_correctly(client):
-    df = client.get_data("magnetosphere", time_min="2018-01-01")
+    with pytest.warns(FutureWarning):
+        df = client.get_data("magnetosphere", time_min="2018-01-01")
     assert len(df) == 1
     assert df["SC"][0] == "C3"
 
 
 def test_get_data_time_max_filters_correctly(client):
-    df = client.get_data("magnetosphere", time_max="2016-01-01")
+    with pytest.warns(FutureWarning):
+        df = client.get_data("magnetosphere", time_max="2016-01-01")
     assert len(df) == 1
     assert df["SC"][0] == "MMS"
 
 
 def test_get_data_time_range_excludes_outside(client):
-    df = client.get_data("magnetosphere", time_min="2017-01-01", time_max="2018-01-01")
+    with pytest.warns(FutureWarning):
+        df = client.get_data("magnetosphere", time_min="2017-01-01", time_max="2018-01-01")
     assert len(df) == 1
     assert df["SC"][0] == "THA"
 
@@ -92,9 +97,8 @@ def test_get_data_spacecraft_multiple(client):
 
 
 def test_get_data_spacecraft_no_match(client):
-    with pytest.raises(httpx.HTTPStatusError) as e:
+    with pytest.raises(sm.UnknownSpacecraftError):
         client.get_data("magnetosheath", spacecraft=["NONEXISTENT"])
-    assert e.value.response.status_code == 400
 
 
 # --- Additional coverage: limit ---
@@ -133,9 +137,8 @@ def test_get_data_column_subset(client):
 
 
 def test_get_data_column_nonexistent_is_error(client):
-    with pytest.raises(httpx.HTTPStatusError) as e:
+    with pytest.raises(sm.UnknownColumnError):
         client.get_data("magnetosheath", columns=["Np", "DOES_NOT_EXIST"])
-    assert e.value.response.status_code == 400
 
 
 # --- Additional coverage: all regions queryable ---
@@ -161,5 +164,5 @@ def test_filters_magnetosphere_has_d_msp(client):
 # --- Error handling ---
 
 def test_get_data_invalid_region(client):
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(sm.UnknownRegionError):
         client.get_data("invalid_region")

@@ -48,6 +48,9 @@ dev = [
     "ruff>=0.15.1",
     "codespell>=2.4.1",
     "basedpyright>=1.38.0",
+    "pandas>=2.0",
+    "xarray>=2024.1",
+    "numpy>=1.26",
 ]
 
 [project.scripts]

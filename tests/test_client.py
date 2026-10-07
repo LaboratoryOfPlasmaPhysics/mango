@@ -1,6 +1,7 @@
 import pytest
 
-from space_mango.client import MangoFilterError, _validate_filters
+from space_mango.client import _validate_filters
+from space_mango.errors import MangoFilterError
 
 MAGNETOSHEATH_FILTERS = {
     "bz_imf", "by_imf", "bx_imf", "pd_sw", "np_sw", "tp_sw",
