@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi.testclient import TestClient
 
 from space_mango.app import create_app
@@ -69,7 +71,7 @@ def test_hive_dataset_query_spacecraft_filter(dataset_dir):
 
 def test_hive_dataset_query_time_filter(dataset_dir):
     df = MangoDataset(dataset_dir).query(
-        Region.magnetosheath, {}, time_min="2017-01-01T00:00:00", limit=100
+        Region.magnetosheath, {}, start=datetime(2017, 1, 1), limit=100
     )
     assert set(df["SC"].to_list()) == {"MMS", "C1"}
 

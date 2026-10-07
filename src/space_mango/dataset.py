@@ -4,38 +4,11 @@ from pathlib import Path
 
 import polars as pl
 
-from space_mango.errors import QueryError
-from space_mango.models import RANGE_FILTERS, Region
+from space_mango.errors import QueryError, did_you_mean
+from space_mango.filtering import build_filter_exprs, parse_range_params
+from space_mango.models import Region
 
 _DEFAULT_DATA_DIR = Path("/data/mango")
-
-
-def _apply_range_filters(
-    lf: pl.LazyFrame, region: Region, raw_params: Mapping[str, str | None]
-) -> pl.LazyFrame:
-    """Apply all range filters from the catalog that have min/max values set."""
-    available = set(lf.collect_schema().names())
-    filters: list[pl.Expr] = []
-
-    for name, filt in RANGE_FILTERS.items():
-        if region not in filt.regions:
-            continue
-        lo = raw_params.get(f"{name}_min")
-        hi = raw_params.get(f"{name}_max")
-        if (lo is not None or hi is not None) and filt.column not in available:
-            raise QueryError(
-                "filter_column_missing",
-                f"Filter '{name}' needs column '{filt.column}', "
-                f"which region '{region}' does not have.",
-            )
-        if lo is not None:
-            filters.append(pl.col(filt.column) >= float(lo))
-        if hi is not None:
-            filters.append(pl.col(filt.column) <= float(hi))
-
-    if filters:
-        lf = lf.filter(pl.all_horizontal(filters))
-    return lf
 
 
 class MangoDataset:
@@ -56,6 +29,70 @@ class MangoDataset:
     def __getitem__(self, region: str) -> pl.LazyFrame:
         return self._lazy(region)
 
+    def spacecraft(self, region: Region | str) -> list[str]:
+        path = self._dir / Region(region).value
+        if not path.is_dir():
+            return []
+        return sorted(
+            p.name.split("=", 1)[1]
+            for p in path.iterdir()
+            if p.is_dir() and p.name.startswith("SC=")
+        )
+
+    def columns(self, region: Region | str) -> list[str]:
+        return self._lazy(Region(region).value).collect_schema().names()
+
+    def _plan(
+        self,
+        region: Region,
+        raw_params: Mapping[str, str | None],
+        *,
+        columns: list[str] | None = None,
+        spacecraft: list[str] | None = None,
+        start: datetime | None = None,
+        stop: datetime | None = None,
+        stop_inclusive: bool = False,
+        sw_paired_only: bool = False,
+        normalized_only: bool = False,
+    ) -> pl.LazyFrame:
+        lf = self._lazy(region)
+        available = set(lf.collect_schema().names())
+        if spacecraft:
+            known = self.spacecraft(region)
+            for sc in spacecraft:
+                if sc not in known:
+                    raise QueryError(
+                        "unknown_spacecraft",
+                        f"'{sc}' is not a spacecraft in region '{region.value}'."
+                        f"{did_you_mean(sc, known)}",
+                        known,
+                    )
+        if columns:
+            for c in columns:
+                if c not in available:
+                    raise QueryError(
+                        "unknown_column",
+                        f"'{c}' is not a column of region '{region.value}'."
+                        f"{did_you_mean(c, available)}",
+                        available,
+                    )
+        exprs = build_filter_exprs(
+            region,
+            available,
+            spacecraft=spacecraft,
+            start=start,
+            stop=stop,
+            stop_inclusive=stop_inclusive,
+            sw_paired_only=sw_paired_only,
+            normalized_only=normalized_only,
+            ranges=parse_range_params(region, raw_params),
+        )
+        if exprs:
+            lf = lf.filter(pl.all_horizontal(exprs))
+        if columns:
+            lf = lf.select(columns)
+        return lf
+
     def query(
         self,
         region: Region,
@@ -63,37 +100,24 @@ class MangoDataset:
         *,
         columns: list[str] | None = None,
         spacecraft: list[str] | None = None,
-        time_min: str | None = None,
-        time_max: str | None = None,
+        start: datetime | None = None,
+        stop: datetime | None = None,
+        stop_inclusive: bool = False,
         sw_paired_only: bool = False,
         normalized_only: bool = False,
         limit: int | None = None,
     ) -> pl.DataFrame:
-        lf = self._lazy(region)
-        available = set(lf.collect_schema().names())
-        filters: list[pl.Expr] = []
-
-        if spacecraft:
-            filters.append(pl.col("SC").is_in(spacecraft))
-        if time_min:
-            filters.append(pl.col("Time") >= datetime.fromisoformat(time_min))
-        if time_max:
-            filters.append(pl.col("Time") <= datetime.fromisoformat(time_max))
-        if sw_paired_only and "SW_pairing" in available:
-            filters.append(pl.col("SW_pairing"))
-        if normalized_only and "Norma_pos" in available:
-            filters.append(pl.col("Norma_pos"))
-
-        if filters:
-            lf = lf.filter(pl.all_horizontal(filters))
-
-        lf = _apply_range_filters(lf, region, raw_params)
-
-        if columns:
-            cols = [c for c in columns if c in available]
-            if cols:
-                lf = lf.select(cols)
-
+        lf = self._plan(
+            region,
+            raw_params,
+            columns=columns,
+            spacecraft=spacecraft,
+            start=start,
+            stop=stop,
+            stop_inclusive=stop_inclusive,
+            sw_paired_only=sw_paired_only,
+            normalized_only=normalized_only,
+        )
         if limit is not None:
             lf = lf.limit(limit)
         return lf.collect()

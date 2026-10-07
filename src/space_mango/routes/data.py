@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 
 from space_mango.dataset import MangoDataset, get_dataset
+from space_mango.filtering import time_window
 from space_mango.models import RANGE_FILTERS, Format, Region
 from space_mango.routes.schemas import DatasetInfo, FilterInfo
 
@@ -54,9 +55,11 @@ def region_data(
     region: Region,
     # General filters
     columns: list[str] | None = Query(None, description="Columns to include (default: all)"),
-    spacecraft: list[str] | None = Query(None, description="Filter by spacecraft (e.g. THA, C1, MMS1)"),
-    time_min: str | None = Query(None, description="Start time (ISO 8601)"),
-    time_max: str | None = Query(None, description="End time (ISO 8601)"),
+    spacecraft: list[str] | None = Query(None, description="Filter by spacecraft (e.g. THA, C1, MMS)"),
+    time_min: str | None = Query(None, description="Legacy inclusive start (use start)"),
+    time_max: str | None = Query(None, description="Legacy inclusive end (use stop)"),
+    start: str | None = Query(None, description="Start time, inclusive (ISO 8601)"),
+    stop: str | None = Query(None, description="Stop time, exclusive (ISO 8601)"),
     sw_paired_only: bool = Query(False, description="Only return points with upstream SW pairing"),
     normalized_only: bool = Query(False, description="Only return spatially normalized points"),
     limit: int | None = Query(None, ge=1, le=10_000_000, description="Max rows to return (default: all)"),
@@ -76,15 +79,15 @@ def region_data(
     - Near magnetopause in sheath: `d_msh_max=0.3`
     - Specific clock angle range: combine `by_imf_min/max` + `bz_imf_min/max`
     """
-    raw_params = dict(request.query_params)
-
+    start_dt, stop_dt, stop_inclusive = time_window(start, stop, time_min, time_max)
     df = ds.query(
         region,
-        raw_params,
+        dict(request.query_params),
         columns=columns,
         spacecraft=spacecraft,
-        time_min=time_min,
-        time_max=time_max,
+        start=start_dt,
+        stop=stop_dt,
+        stop_inclusive=stop_inclusive,
         sw_paired_only=sw_paired_only,
         normalized_only=normalized_only,
         limit=limit,

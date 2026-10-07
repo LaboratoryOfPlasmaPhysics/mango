@@ -92,8 +92,9 @@ def test_get_data_spacecraft_multiple(client):
 
 
 def test_get_data_spacecraft_no_match(client):
-    df = client.get_data("magnetosheath", spacecraft=["NONEXISTENT"])
-    assert len(df) == 0
+    with pytest.raises(httpx.HTTPStatusError) as e:
+        client.get_data("magnetosheath", spacecraft=["NONEXISTENT"])
+    assert e.value.response.status_code == 400
 
 
 # --- Additional coverage: limit ---
@@ -131,10 +132,10 @@ def test_get_data_column_subset(client):
     assert set(df.columns) == {"Np", "Bz"}
 
 
-def test_get_data_column_nonexistent_ignored(client):
-    df = client.get_data("magnetosheath", columns=["Np", "DOES_NOT_EXIST"])
-    assert "Np" in df.columns
-    assert "DOES_NOT_EXIST" not in df.columns
+def test_get_data_column_nonexistent_is_error(client):
+    with pytest.raises(httpx.HTTPStatusError) as e:
+        client.get_data("magnetosheath", columns=["Np", "DOES_NOT_EXIST"])
+    assert e.value.response.status_code == 400
 
 
 # --- Additional coverage: all regions queryable ---
