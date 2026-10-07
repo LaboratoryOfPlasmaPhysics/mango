@@ -52,9 +52,15 @@ def _validate_filters(
 class MangoClient:
     """Client for the MANGO dataset API."""
 
-    def __init__(self, base_url: str = DEFAULT_URL) -> None:
+    def __init__(
+        self,
+        base_url: str = DEFAULT_URL,
+        *,
+        timeout: float = 120.0,
+        transport: httpx.BaseTransport | None = None,
+    ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._http = httpx.Client(base_url=self._base_url, timeout=120.0)
+        self._http = httpx.Client(base_url=self._base_url, timeout=timeout, transport=transport)
         self._filter_cache: dict[str, set[str]] = {}
 
     def _ensure_filters_cached(self, region: str) -> None:
