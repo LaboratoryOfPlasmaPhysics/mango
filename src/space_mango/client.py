@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import numbers
+import os
 import re
 import warnings
 from collections.abc import Iterable, Mapping
@@ -166,7 +167,7 @@ class MangoClient:
 
     def __init__(
         self,
-        base_url: str = DEFAULT_URL,
+        base_url: str | None = None,
         *,
         timeout: float = 120.0,
         transport: httpx.BaseTransport | None = None,
@@ -174,9 +175,12 @@ class MangoClient:
         cache: bool = True,
         offline: bool = False,
     ) -> None:
-        """cache_dir defaults to $SPACE_MANGO_CACHE_DIR or the platform user cache directory.
+        """base_url defaults to $SPACE_MANGO_URL, else the public MANGO server.
+        cache_dir defaults to $SPACE_MANGO_CACHE_DIR or the platform user cache directory.
         cache=False sends every get_data to the server. offline=True serves get_data only from
         the cache and raises CacheMissError for anything not cached."""
+        if base_url is None:
+            base_url = os.environ.get("SPACE_MANGO_URL") or DEFAULT_URL
         self._cache: FragmentCache = FragmentCache(
             Path(cache_dir) if cache_dir else default_cache_dir(), default_max_bytes()
         )
