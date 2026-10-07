@@ -165,3 +165,42 @@ def test_filters_magnetosphere_has_d_msp(client):
 def test_get_data_invalid_region(client):
     with pytest.raises(sm.UnknownRegionError):
         client.get_data("invalid_region")
+
+
+# --- Module-level discovery API (README Quick Start, 0.2) ---
+
+@pytest.fixture
+def default_client(client, monkeypatch):
+    monkeypatch.setattr(sm, "_default_client", client)
+    return client
+
+
+def test_module_level_discovery(default_client):
+    import space_mango as mango
+
+    assert "bow shock" in repr(mango.magnetosheath)
+    assert "magnetosheath" in dir(mango)
+    assert mango.describe("magnetosheath").height > 0
+    assert mango.spacecraft("magnetosheath")["sc"].to_list() == ["C1", "MMS", "THA"]
+    assert mango.count("magnetosheath", bz_imf_max=-2)["n_rows"] == 2
+    assert mango.search("density").height > 0
+    assert mango.cite().startswith("@misc")
+    assert mango.cache.info()["n_files"] >= 0
+
+
+def test_readme_statistical_example(default_client):
+    import space_mango as mango
+
+    r = mango.magnetosheath.get_data(
+        spacecraft=["THA", "MMS", "C1"], start="2016-01",
+        columns=["Time", "Np", "R_norm"], bz_imf_max=-2, d_msh_max=0.3,
+    )
+    assert r["R_norm"].to_list() == [0.2]
+    assert r.metadata["Np"]["unit"] == "cm⁻³"
+
+
+def test_readme_event_example(default_client):
+    import space_mango as mango
+
+    t = mango.timeline("THA", "2016-03-15T09:00", "2016-03-15T11:00")
+    assert t.to_intervals()["region"].to_list() == ["magnetosheath"]

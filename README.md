@@ -42,30 +42,42 @@ pip install space-mango[server]
 ## Quick Start
 
 ```python
-import space_mango as sm
+import space_mango as mango
 
-# List available regions
-sm.regions()
-# ['magnetosphere', 'magnetosheath', 'solar_wind']
+# What is there? (nothing below downloads data)
+mango.regions()                     # ['magnetosphere', 'magnetosheath', 'solar_wind']
+mango.magnetosheath                 # <MANGO region 'magnetosheath': Between the bow shock and ...>
+mango.describe("magnetosheath")     # column | unit | frame | description | filter | dtype
+mango.spacecraft("magnetosheath")   # sc | start | stop | n_rows
+mango.search("density")             # columns and filters matching a word
+mango.count("magnetosheath", bz_imf_max=-2)   # {'n_rows': ..., 'est_mb': ...}
 
-# Get magnetosheath data with southward IMF and high dynamic pressure
-df = sm.get_data("magnetosheath", bz_imf_max=-2, pd_sw_min=3)
-
-# Select specific columns and spacecraft
-df = sm.get_data(
-    "magnetosphere",
-    columns=["Time", "X_gsm", "Y_gsm", "Z_gsm", "Np", "Bz"],
-    spacecraft=["MMS1", "THA"],
-    time_min="2015-01-01",
-    time_max="2020-12-31",
+# Statistical study: southward IMF, inner magnetosheath
+r = mango.magnetosheath.get_data(           # tab-complete the filters; help() lists their units
+    spacecraft=["THA", "MMS"],              # spacecraft names: see mango.spacecraft(...)
+    start="2016-01", stop="2021-01",        # start inclusive, stop exclusive
+    columns=["Time", "Np", "Bx_swi", "R_norm"],
+    bz_imf_max=-2, d_msh_max=0.3,
 )
+df = r.to_pandas()                          # or r.to_polars(), r.to_xarray()
+r.metadata["Np"]                            # {'unit': 'cm⁻³', 'frame': '', 'description': ...}
+print(r.cite())                             # BibTeX, with the dataset version
 
-# List available filters for a region
-sm.filters("magnetosheath")
-
-# List columns
-sm.columns("magnetosphere")
+# Event context: where was THA, and when did it cross a boundary?
+t = mango.timeline("THA", "2017-01-12T10:00", "2017-01-12T12:00")
+t.to_intervals()                            # sc | region | start | stop | n_points
 ```
+
+Results are cached on disk (`~/.cache/space-mango`, size cap `SPACE_MANGO_CACHE_SIZE`
+bytes, default 10 GB); re-running a notebook does not download again.
+`mango.cache.info()` / `mango.cache.clear()` manage it.
+
+**Changes in 0.2:** `get_data` returns a `MangoResult` (use `.to_polars()` for the previous
+polars DataFrame); `time_min`/`time_max` are deprecated in favour of `start`/`stop`;
+unknown spacecraft, columns or filters now raise an error instead of returning empty or
+unfiltered data. The spacecraft name for MMS is `MMS` (not `MMS1`).
+
+Full reference (columns, frames, filters, cache, errors): [docs/usage.md](docs/usage.md).
 
 ## Self-Hosting
 
