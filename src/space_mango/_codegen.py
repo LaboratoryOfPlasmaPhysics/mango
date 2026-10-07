@@ -56,8 +56,8 @@ class {cls}(RegionAPI):
     def get_data(
         self,
         *,
-        columns: list[str] | None = None,
-        spacecraft: list[str] | None = None,
+        columns: str | list[str] | None = None,
+        spacecraft: str | list[str] | None = None,
         start: TimeLike = None,
         stop: TimeLike = None,
         sw_paired_only: bool = False,
@@ -76,8 +76,8 @@ class {cls}(RegionAPI):
     def count(
         self,
         *,
-        columns: list[str] | None = None,
-        spacecraft: list[str] | None = None,
+        columns: str | list[str] | None = None,
+        spacecraft: str | list[str] | None = None,
         start: TimeLike = None,
         stop: TimeLike = None,
         sw_paired_only: bool = False,

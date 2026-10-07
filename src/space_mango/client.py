@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+import numbers
 import re
 import warnings
 from collections.abc import Iterable, Mapping
@@ -40,6 +42,24 @@ from space_mango.timeparse import TimeLike, to_iso
 
 DEFAULT_URL = "http://sciqlop.lpp.polytechnique.fr/mango/"
 
+Names = str | Iterable[str] | None
+
+
+def _as_names(value: Names) -> list[str] | None:
+    """One name or several, as a list without duplicates (order kept). "THA" -> ["THA"]."""
+    if value is None:
+        return None
+    names = [value] if isinstance(value, str) else list(value)
+    return list(dict.fromkeys(names)) or None
+
+
+def _is_number(value: object) -> bool:
+    """int, float and numpy integer/float scalars (registered as numbers.Real by numpy,
+    so numpy is never imported here); bool and numpy.bool_ are refused."""
+    if isinstance(value, bool) or type(value).__name__ in ("bool_", "bool"):
+        return False
+    return isinstance(value, numbers.Real)
+
 
 def _validate_filters(
     filters: Mapping[str, object],
@@ -69,14 +89,17 @@ def _validate_filters(
                 f"{did_you_mean(key, valid_params)}\n"
                 f"Available filters: {available}{hint}"
             )
-        if isinstance(value, bool) or not isinstance(value, int | float | str):
+        if not (_is_number(value) or isinstance(value, str)):
             raise MangoFilterError(f"Filter '{key}' value must be numeric, got {value!r}.")
         try:
-            cleaned[key] = float(value)
+            number = float(value)  # pyright: ignore[reportArgumentType]
         except ValueError:
             raise MangoFilterError(
                 f"Filter '{key}' value must be numeric, got {value!r}."
             ) from None
+        if not math.isfinite(number):
+            raise MangoFilterError(f"Filter '{key}' value must be finite, got {value!r}.")
+        cleaned[key] = number
     return cleaned
 
 
@@ -158,7 +181,18 @@ class MangoClient:
         except httpx.TransportError as e:
             raise ServerError(f"Could not reach the MANGO server at {self._base_url}: {e}") from e
         if r.status_code == 400:
-            raise error_from_response(400, r.json())
+            try:
+                body = r.json()
+            except ValueError:  # not JSON, e.g. an HTML page from a proxy
+                raise ServerError(
+                    f"MANGO server answered HTTP 400 for {path}: {r.text[:300]}"
+                ) from None
+            raise error_from_response(400, body)
+        if r.status_code == 404 and path == "/api/v1/dataset":
+            raise ServerError(
+                f"MANGO server at {self._base_url} is older than 0.2; upgrade the server "
+                "or use space-mango<0.2"
+            )
         if r.status_code >= 400:
             raise ServerError(
                 f"MANGO server answered HTTP {r.status_code} for {path}: {r.text[:300]}"
@@ -309,8 +343,8 @@ class MangoClient:
         self,
         region: str,
         *,
-        columns: list[str] | None = None,
-        spacecraft: list[str] | None = None,
+        columns: Names = None,
+        spacecraft: Names = None,
         start: TimeLike = None,
         stop: TimeLike = None,
         sw_paired_only: bool = False,
@@ -329,7 +363,9 @@ class MangoClient:
         By default data are fetched as monthly per-column fragments, kept in a local cache
         keyed by dataset version, and filtered locally (same filtering code as the server).
         cache=False, or a limit, sends the query to the server instead.
+        columns and spacecraft take one name or a list of names.
         """
+        columns, spacecraft = _as_names(columns), _as_names(spacecraft)
         params, query = self._request_params(
             region,
             columns=columns,
@@ -530,8 +566,8 @@ class MangoClient:
         self,
         region: str,
         *,
-        columns: list[str] | None = None,
-        spacecraft: list[str] | None = None,
+        columns: Names = None,
+        spacecraft: Names = None,
         start: TimeLike = None,
         stop: TimeLike = None,
         sw_paired_only: bool = False,
@@ -539,6 +575,7 @@ class MangoClient:
         **filters: float,
     ) -> dict[str, float]:
         """Rows and estimated download size (MB) of the matching get_data call. Downloads nothing."""
+        columns, spacecraft = _as_names(columns), _as_names(spacecraft)
         params, _ = self._request_params(
             region,
             columns=columns,
@@ -587,10 +624,11 @@ class MangoClient:
         return df.filter(hay.str.contains(needle, literal=True))
 
     def timeline(
-        self, sc: str, start: TimeLike, stop: TimeLike, columns: list[str] | None = None
+        self, sc: str, start: TimeLike, stop: TimeLike, columns: Names = None
     ) -> MangoResult:
         """Every sample of one spacecraft over [start, stop) across all regions (up to 31 days),
         with a 'region' column. Use .to_intervals() for region crossings."""
+        columns = _as_names(columns)
         params: dict[str, object] = {
             "sc": sc,
             "start": to_iso(start, param="start"),

@@ -21,6 +21,8 @@ def to_iso(value: object, *, param: str) -> str | None:
     if value is None:
         return None
     if isinstance(value, datetime):  # includes pandas.Timestamp
+        if value != value:  # pandas.NaT is a datetime that is not equal to itself
+            raise TimeParseError(f"{param}={value!r} is not a time (missing value).")
         return _naive_utc(value).isoformat()
     if isinstance(value, date):
         return datetime(value.year, value.month, value.day).isoformat()

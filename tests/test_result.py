@@ -64,3 +64,9 @@ def test_to_intervals_on_single_region_result(client):
     iv = client.get_data("magnetosheath", limit=10).to_intervals()
     assert set(iv["region"].to_list()) == {"magnetosheath"}
     assert iv["n_points"].sum() == 3
+
+
+def test_to_intervals_without_time_or_sc_raises_mango_error(client):
+    r = client.get_data("magnetosheath", columns=["Np"])
+    with pytest.raises(sm.MangoError, match="Time and SC"):
+        r.to_intervals()

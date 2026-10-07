@@ -88,3 +88,16 @@ def test_time_min_is_deprecated_but_works(client):
     with pytest.warns(FutureWarning, match="start"):
         df = client.get_data("magnetosphere", time_min="2018-01-01")
     assert df["SC"].to_list() == ["C3"]
+
+
+def test_to_iso_rejects_pandas_nat():
+    pd = pytest.importorskip("pandas")
+    with pytest.raises(TimeParseError):
+        to_iso(pd.NaT, param="start")
+
+
+@pytest.mark.parametrize("cache", [True, False])
+def test_get_data_rejects_pandas_nat(client, cache):
+    pd = pytest.importorskip("pandas")
+    with pytest.raises(TimeParseError):
+        client.get_data("magnetosheath", start=pd.NaT, cache=cache)

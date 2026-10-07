@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from space_mango.errors import MangoError
+
 if TYPE_CHECKING:
     import pandas as pd
     import xarray as xr
@@ -82,6 +84,10 @@ class MangoResult:
         samples are more than max_gap apart. stop is the last sample time.
         """
         df = self.data
+        if not {"Time", "SC"} <= set(df.columns):
+            raise MangoError(
+                "to_intervals needs the Time and SC columns; request them in columns=…"
+            )
         if "region" not in df.columns:
             df = df.with_columns(region=pl.lit(self.region))
         df = df.select("SC", "Time", "region").sort("SC", "Time")
