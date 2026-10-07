@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import re
 import warnings
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import polars as pl
@@ -21,12 +22,15 @@ from space_mango.cache import (
 )
 from space_mango.errors import (
     CacheMissError,
+    MangoError,
     MangoFilterError,
+    QueryError,
     ServerError,
     UnknownColumnError,
     UnknownRegionError,
     UnknownSpacecraftError,
     did_you_mean,
+    error_from_query,
     error_from_response,
 )
 from space_mango.filtering import build_filter_exprs, parse_time
@@ -87,6 +91,22 @@ def _progress(items: list[list[date]], desc: str) -> Iterable[list[date]]:
     return tqdm(items, desc=desc, unit="request")
 
 
+_DATETIME_DTYPE = re.compile(r"Datetime\(time_unit='(ns|us|ms)', time_zone=(None|'[^']*')\)")
+_TIME_UNITS: dict[str, Literal["ns", "us", "ms"]] = {"ns": "ns", "us": "us", "ms": "ms"}
+
+
+def _parse_dtype(text: str) -> pl.DataType:
+    """Polars dtype from its str() as served by /describe (e.g. 'Float64', 'Datetime(...)')."""
+    m = _DATETIME_DTYPE.fullmatch(text)
+    if m:
+        tz = None if m[2] == "None" else m[2].strip("'")
+        return pl.Datetime(_TIME_UNITS[m[1]], tz)
+    dtype = getattr(pl, text, None)
+    if isinstance(dtype, type) and issubclass(dtype, pl.DataType):
+        return dtype()
+    raise MangoError(f"Cannot interpret column dtype {text!r} served by /describe.")
+
+
 def _range_filters(region: str, query: Mapping[str, object]) -> dict[str, float]:
     """The validated range filters ({"bz_imf_max": -2.0, ...}) recorded in a query."""
     names = filters_for(region)
@@ -128,6 +148,11 @@ class MangoClient:
         self._spacecraft_cache: dict[str, pl.DataFrame] = {}
 
     def _get(self, path: str, params: Mapping[str, object] | None = None) -> httpx.Response:
+        if self._offline:
+            raise CacheMissError(
+                f"Offline mode: {path} needs the MANGO server and is not answered from the "
+                "cache. Drop offline=True to use it."
+            )
         try:
             r = self._http.get(path, params=params)  # pyright: ignore[reportArgumentType]
         except httpx.TransportError as e:
@@ -149,10 +174,32 @@ class MangoClient:
             )
         return region
 
+    def _get_meta(self, path: str) -> Any:
+        """JSON of a metadata endpoint. Online: fetched and stored under the dataset version
+        in the cache. Offline: read back from the cache, never from the network."""
+        name = path.removeprefix("/api/v1/").replace("/", "__") + ".json"
+        if self._offline:
+            version = (
+                str(self._dataset_info["version"])
+                if self._dataset_info is not None
+                else self._cache.latest_version()
+            )
+            data = self._cache.read_meta(version, name) if version else None
+            if data is None:
+                raise CacheMissError(
+                    f"Offline mode: {path} is not in the cache at {self._cache.root}. "
+                    "Run the same query once online, or drop offline=True."
+                )
+            return data
+        data = self._get(path).json()
+        version = data["version"] if path == "/api/v1/dataset" else self.dataset_info()["version"]
+        self._cache.write_meta(str(version), name, data)
+        return data
+
     def _ensure_filters_cached(self, region: str) -> None:
         if region not in self._filter_cache:
-            r = self._get(f"/api/v1/regions/{region}/filters")
-            self._filter_cache[region] = {f["name"] for f in r.json()}
+            infos = self._get_meta(f"/api/v1/regions/{region}/filters")
+            self._filter_cache[region] = {f["name"] for f in infos}
 
     def _other_region_filters(self, exclude: str) -> dict[str, set[str]]:
         for region in self.regions():
@@ -162,7 +209,7 @@ class MangoClient:
     def regions(self) -> list[str]:
         """List available regions."""
         if self._regions is None:
-            self._regions = self._get("/api/v1/regions").json()
+            self._regions = self._get_meta("/api/v1/regions")
         return list(self._regions or [])
 
     def columns(self, region: str) -> list[str]:
@@ -172,18 +219,17 @@ class MangoClient:
 
     def filters(self, region: str) -> list[dict[str, object]]:
         """List available filters for a region (name, column, unit, description)."""
-        r = self._get(f"/api/v1/regions/{region}/filters")
-        return r.json()
+        return self._get_meta(f"/api/v1/regions/{region}/filters")
 
     def dataset_info(self) -> dict[str, Any]:
         """Dataset version, title, citation (BibTeX), DOI and schema checksum."""
         if self._dataset_info is None:
-            self._dataset_info = self._get("/api/v1/dataset").json()
+            self._dataset_info = self._get_meta("/api/v1/dataset")
         return self._dataset_info or {}
 
     def _describe_raw(self, region: str) -> dict[str, Any]:
         if region not in self._describe_cache:
-            self._describe_cache[region] = self._get(f"/api/v1/regions/{region}/describe").json()
+            self._describe_cache[region] = self._get_meta(f"/api/v1/regions/{region}/describe")
         return self._describe_cache[region]
 
     def _result(
@@ -367,7 +413,23 @@ class MangoClient:
             needed.add("SW_pairing")
         if normalized_only:
             needed.add("Norma_pos")
-        cols = sorted(needed)
+        # Columns the region does not serve are left out: build_filter_exprs then refuses the
+        # flag/filter exactly as the server does, before anything is downloaded.
+        cols = sorted(needed & set(served))
+        try:
+            exprs = build_filter_exprs(
+                region,
+                set(cols) | {"SC"},
+                start=start,
+                stop=stop,
+                stop_inclusive=stop_inclusive,
+                sw_paired_only=sw_paired_only,
+                normalized_only=normalized_only,
+                ranges=ranges,
+            )
+        except QueryError as e:
+            raise error_from_query(e) from None
+        keep = pl.all_horizontal(exprs) if exprs else None
 
         frames: list[pl.DataFrame] = []
         for sc in spacecraft or sorted(coverage):
@@ -386,40 +448,33 @@ class MangoClient:
             for run in _progress(contiguous_runs(missing), f"Downloading {region}/{sc}"):
                 self._fetch_months(version, region, sc, run, cols)
             for m in months:
-                frames.append(
-                    self._cache.read_month(version, region, sc, m, cols).with_columns(
-                        SC=pl.lit(sc)
-                    )
-                )
+                frame = self._read_month(version, region, sc, m, cols).with_columns(SC=pl.lit(sc))
+                # Filter month by month (all filters are row-wise) to bound peak memory.
+                frames.append(frame if keep is None else frame.filter(keep))
         self._cache.evict()
         if not frames:
-            return self._empty_frame(region, columns)
-        df = pl.concat(frames, how="vertical_relaxed")
-        exprs = build_filter_exprs(
-            region,
-            set(df.columns),
-            start=start,
-            stop=stop,
-            stop_inclusive=stop_inclusive,
-            sw_paired_only=sw_paired_only,
-            normalized_only=normalized_only,
-            ranges=ranges,
-        )
-        if exprs:
-            df = df.filter(pl.all_horizontal(exprs))
-        return df.select(columns or served)
+            return self._empty_frame(region, columns or served)
+        return pl.concat(frames, how="vertical_relaxed").select(columns or served)
 
-    def _empty_frame(self, region: str, columns: list[str] | None) -> pl.DataFrame:
-        """A zero-row frame with the server's schema (asked of the server, so dtypes match)."""
-        params: dict[str, object] = {
-            "format": "arrow",
-            "limit": "1",
-            "start": "1900-01-01",
-            "stop": "1900-01-02",
-        }
-        if columns:
-            params["columns"] = columns
-        return pl.read_ipc(self._get(f"/api/v1/regions/{region}/data", params).content)
+    def _read_month(
+        self, version: str, region: str, sc: str, month: date, columns: list[str]
+    ) -> pl.DataFrame:
+        try:
+            return self._cache.read_month(version, region, sc, month, columns)
+        except FileNotFoundError:
+            # Another process evicted a fragment after has() said it was there: fetch it again.
+            if self._offline:
+                raise CacheMissError(
+                    f"Offline mode: {month:%Y-%m} of {sc}/{region} was evicted from the cache."
+                ) from None
+            self._fetch_months(version, region, sc, [month], columns)
+            return self._cache.read_month(version, region, sc, month, columns)
+
+    def _empty_frame(self, region: str, columns: list[str]) -> pl.DataFrame:
+        """A zero-row frame with the served schema, built from the region's described dtypes
+        (no request, so it also works offline)."""
+        dtypes = {c["name"]: c["dtype"] for c in self._describe_raw(region)["columns"]}
+        return pl.DataFrame(schema={c: _parse_dtype(dtypes[c]) for c in columns})
 
     def cache_info(self) -> CacheInfo:
         """Cache location, number of fragment files, size and size cap (bytes)."""
@@ -464,7 +519,7 @@ class MangoClient:
         """Spacecraft present in a region, with first/last sample time and row count."""
         self._check_region(region)
         if region not in self._spacecraft_cache:
-            rows = self._get(f"/api/v1/regions/{region}/spacecraft").json()
+            rows = self._get_meta(f"/api/v1/regions/{region}/spacecraft")
             self._spacecraft_cache[region] = pl.DataFrame(
                 rows,
                 schema={"sc": pl.String, "start": pl.String, "stop": pl.String, "n_rows": pl.Int64},

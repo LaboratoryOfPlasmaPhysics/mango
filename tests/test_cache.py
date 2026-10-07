@@ -1,11 +1,13 @@
 from datetime import date, datetime
+from typing import Any
 
+import httpx
 import polars as pl
 import pytest
 
 from space_mango.cache import FragmentCache, contiguous_runs, months_between, next_month
 from space_mango.client import MangoClient
-from space_mango.errors import CacheMissError, UnknownSpacecraftError
+from space_mango.errors import CacheMissError, MangoFilterError, UnknownSpacecraftError
 
 
 def test_month_helpers():
@@ -99,3 +101,79 @@ def test_cache_info_and_clear(dataset_dir, make_client):
     assert c.cache_info()["n_files"] > 0
     c.cache_clear()
     assert c.cache_info()["n_files"] == 0
+
+
+def _no_network(request: httpx.Request) -> httpx.Response:
+    raise httpx.ConnectError("network is down", request=request)
+
+
+def _fresh(dataset_dir, make_client, cache_dir, **kw) -> MangoClient:
+    """A client on its own cache directory (the default one is shared with other tests)."""
+    return MangoClient("http://testserver", transport=make_client(dataset_dir)._http._transport,
+                       cache_dir=cache_dir, **kw)
+
+
+OFFLINE_QUERIES: list[dict[str, Any]] = [
+    {"spacecraft": ["THA"]},
+    {"spacecraft": ["THA"], "columns": ["Time", "Bz", "SC"], "bz_imf_max": 2},
+    {"spacecraft": ["THA"], "start": "2030-01-01"},  # nothing overlaps: empty result
+]
+
+
+def test_offline_works_with_network_down(dataset_dir, make_client, tmp_path):
+    online = _fresh(dataset_dir, make_client, tmp_path / "c")
+    expected = []
+    for q in OFFLINE_QUERIES:
+        online.get_data("magnetosphere", **q)  # fills the cache
+        expected.append(online.get_data("magnetosphere", cache=False, **q).to_polars())
+    off = MangoClient("http://testserver", transport=httpx.MockTransport(_no_network),
+                      cache_dir=tmp_path / "c", offline=True)
+    for q, exp in zip(OFFLINE_QUERIES, expected, strict=True):
+        got = off.get_data("magnetosphere", **q)
+        assert got.to_polars().equals(exp)
+    assert off.dataset_info()["version"] == online.dataset_info()["version"]
+
+
+def test_offline_with_empty_cache_raises_cache_miss_not_server_error(tmp_path):
+    off = MangoClient("http://testserver", transport=httpx.MockTransport(_no_network),
+                      cache_dir=tmp_path / "empty", offline=True)
+    with pytest.raises(CacheMissError, match="online"):
+        off.get_data("magnetosphere", spacecraft=["THA"])
+
+
+def test_offline_missing_fragment_with_metadata_cached(dataset_dir, make_client, tmp_path):
+    _fresh(dataset_dir, make_client, tmp_path / "c").get_data("magnetosphere", spacecraft=["THA"])
+    off = MangoClient("http://testserver", transport=httpx.MockTransport(_no_network),
+                      cache_dir=tmp_path / "c", offline=True)
+    with pytest.raises(CacheMissError, match="C3"):
+        off.get_data("magnetosphere", spacecraft=["C3"])
+
+
+def test_eviction_keeps_metadata(tmp_path):
+    fc = FragmentCache(tmp_path, max_bytes=1)
+    fc.write_meta("v", "dataset.json", {"version": "v"})
+    fc.write_months("v", "solar_wind", "THA", [date(2016, 1, 1)],
+                    pl.DataFrame({"Time": [datetime(2016, 1, 3)], "Np": [1.0]}))
+    fc.evict()
+    assert fc.read_meta("v", "dataset.json") == {"version": "v"}
+    assert fc.info()["n_files"] == 0
+    assert not list(tmp_path.rglob("*.tmp"))
+
+
+@pytest.mark.parametrize("cache", [True, False])
+@pytest.mark.parametrize("flag", ["sw_paired_only", "normalized_only"])
+def test_flag_on_region_without_flag_column(client, cache, flag):
+    with pytest.raises(MangoFilterError, match="needs column"):
+        client.get_data("solar_wind", cache=cache, **{flag: True})
+
+
+def test_fragment_deleted_between_has_and_read_is_refetched(
+    dataset_dir, make_client, tmp_path, monkeypatch
+):
+    c = _fresh(dataset_dir, make_client, tmp_path / "c")
+    expected = c.get_data("magnetosphere", spacecraft=["THA"]).to_polars()
+    victim = next(c._cache.root.rglob("SC=THA/Np/*.parquet"))
+    victim.unlink()  # as if another process evicted it after has() said yes
+    monkeypatch.setattr(c._cache, "has", lambda *a, **k: True)
+    assert c.get_data("magnetosphere", spacecraft=["THA"]).to_polars().equals(expected)
+    assert victim.is_file()

@@ -75,3 +75,9 @@ def error_from_response(status: int, body: object) -> MangoError:
         message = str(detail.get("message", ""))
         return _CODE_TO_ERROR.get(code, ServerError)(message)
     return ServerError(f"MANGO server answered HTTP {status}: {body!r}")
+
+
+def error_from_query(exc: QueryError) -> MangoError:
+    """The client-side error for a QueryError raised locally (cache path), mapped as the
+    server's 400 response would be."""
+    return _CODE_TO_ERROR.get(exc.code, MangoError)(exc.message)

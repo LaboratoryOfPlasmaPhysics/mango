@@ -3,15 +3,19 @@ published MANGO version never changes: the version is part of the path, so nothi
 
 Layout: <root>/<version>/<region>/SC=<sc>/<column>/<YYYY-MM>.parquet
 A month with no data is stored as an empty file, so it is not fetched again.
+Server metadata (dataset, regions, filters, describe, spacecraft) is kept as JSON in
+<root>/<version>/_meta/ so offline=True works with no network. Eviction only removes fragments.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
+from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import platformdirs
 import polars as pl
@@ -57,6 +61,14 @@ def contiguous_runs(months: list[date]) -> list[list[date]]:
     return runs
 
 
+def _atomic_write(target: Path, write: Callable[[Path], object]) -> None:
+    """Write via a temp file + os.replace: readers never see a half-written file."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(f".{os.getpid()}.tmp")
+    write(tmp)
+    os.replace(tmp, target)
+
+
 class CacheInfo(TypedDict):
     root: str
     n_files: int
@@ -84,11 +96,11 @@ class FragmentCache:
                 (pl.col("Time") >= month_start(m)) & (pl.col("Time") < month_start(next_month(m)))
             )
             for column in df.columns:
-                target = self.path(version, region, sc, column, m)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                tmp = target.with_suffix(f".{os.getpid()}.tmp")
-                part.select(column).write_parquet(tmp, compression="zstd")
-                os.replace(tmp, target)  # atomic: readers never see a half-written file
+                frag = part.select(column)
+                _atomic_write(
+                    self.path(version, region, sc, column, m),
+                    lambda tmp, frag=frag: frag.write_parquet(tmp, compression="zstd"),
+                )
 
     def read_month(
         self, version: str, region: str, sc: str, month: date, columns: list[str]
@@ -105,6 +117,27 @@ class FragmentCache:
                 "call MangoClient.cache_clear() and retry."
             )
         return pl.concat(parts, how="horizontal")
+
+    def _meta_path(self, version: str, name: str) -> Path:
+        return self.root / version / "_meta" / name
+
+    def write_meta(self, version: str, name: str, data: object) -> None:
+        text = json.dumps(data)
+        _atomic_write(self._meta_path(version, name), lambda tmp: tmp.write_text(text))
+
+    def read_meta(self, version: str, name: str) -> Any | None:
+        """Stored JSON, or None if this version has no such metadata file."""
+        p = self._meta_path(version, name)
+        return json.loads(p.read_text()) if p.is_file() else None
+
+    def latest_version(self) -> str | None:
+        """The version whose dataset metadata was stored most recently, if any."""
+        if not self.root.exists():
+            return None
+        metas = list(self.root.glob("*/_meta/dataset.json"))
+        if not metas:
+            return None
+        return max(metas, key=lambda p: p.stat().st_mtime).parent.parent.name
 
     def _files(self) -> list[Path]:
         if not self.root.exists():
