@@ -41,12 +41,23 @@ server = [
     "cyclopts>=4.10.1",
 ]
 
+docs = [
+    "space-mango[server,pandas,xarray]",
+    "sphinx>=8.0",
+    "myst-nb>=1.1",
+    "furo>=2024.8.6",
+    "matplotlib>=3.8",
+    "ipykernel>=6.29",
+    "nbformat>=5.10",
+]
+
 pandas = ["pandas>=2.0"]
 xarray = ["xarray>=2024.1", "pandas>=2.0"]
 
 [dependency-groups]
 dev = [
     "space-mango[server]",
+    "space-mango[docs]",
     "pytest>=9.0.2",
     "pytest-sugar>=1.1.1",
     "ruff>=0.15.1",
@@ -125,6 +136,7 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.params.De
 
 [tool.codespell]
 ignore-words-list = "msh,msp,tha"
+skip = "*/_build/*,uv.lock,.git"
 
 [tool.pytest.ini_options]
 python_files = ["*.py"]
@@ -132,3 +144,4 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 testpaths = ["tests"]
 filterwarnings = []
+markers = ["slow: builds a throwaway Sphinx site"]

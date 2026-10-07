@@ -1,4 +1,4 @@
-# MANGO usage reference (0.2)
+# User guide
 
 ```python
 import space_mango as mango

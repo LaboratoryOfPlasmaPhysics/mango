@@ -83,7 +83,7 @@ unfiltered data. The spacecraft name for MMS is `MMS` (not `MMS1`).
   an older server the client raises `ServerError` ("older than 0.2"); keep
   `space-mango<0.2` until the server is upgraded.
 
-Full reference (columns, frames, filters, cache, errors): [docs/usage.md](docs/usage.md).
+Full reference (columns, frames, filters, cache, errors): [docs/user_guide.md](docs/user_guide.md).
 
 ## Self-Hosting
 
