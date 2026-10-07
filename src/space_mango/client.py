@@ -5,9 +5,9 @@ import numbers
 import re
 import warnings
 from collections.abc import Iterable, Mapping
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 import httpx
 import polars as pl
@@ -18,6 +18,7 @@ from space_mango.cache import (
     contiguous_runs,
     default_cache_dir,
     default_max_bytes,
+    month_slice,
     month_start,
     months_between,
     next_month,
@@ -41,6 +42,10 @@ from space_mango.result import MangoResult
 from space_mango.timeparse import TimeLike, to_iso
 
 DEFAULT_URL = "http://sciqlop.lpp.polytechnique.fr/mango/"
+MAX_MONTHS_PER_REQUEST = 6
+"""Cache path: a download request covers at most this many months of one spacecraft."""
+
+_T = TypeVar("_T")
 
 Names = str | Iterable[str] | None
 
@@ -103,7 +108,7 @@ def _validate_filters(
     return cleaned
 
 
-def _progress(items: list[list[date]], desc: str) -> Iterable[list[date]]:
+def _progress(items: list[_T], desc: str) -> Iterable[_T]:
     """Progress bar over fragment downloads when tqdm is installed; silent otherwise."""
     if len(items) < 2:
         return items
@@ -128,6 +133,17 @@ def _parse_dtype(text: str) -> pl.DataType:
     if isinstance(dtype, type) and issubclass(dtype, pl.DataType):
         return dtype()
     raise MangoError(f"Cannot interpret column dtype {text!r} served by /describe.")
+
+
+class _CacheUnusable(Exception):
+    """A cache write failed (already warned): get_data falls back to the server path."""
+
+
+def _cache_key_of(info: Mapping[str, Any]) -> str:
+    """Cache directory name: <version>-<12 hex chars of the schema checksum>."""
+    checksum = str(info.get("schema_checksum") or "")[:12]
+    version = str(info["version"])
+    return f"{version}-{checksum}" if checksum else version
 
 
 def _opt_str(value: object) -> str | None:
@@ -165,6 +181,7 @@ class MangoClient:
             Path(cache_dir) if cache_dir else default_cache_dir(), default_max_bytes()
         )
         self._cache_enabled: bool = cache
+        self._cache_usable: bool = True  # False after a failed write (warned once)
         self._offline: bool = offline
         self._base_url = base_url.rstrip("/")
         self._http = httpx.Client(base_url=self._base_url, timeout=timeout, transport=transport)
@@ -212,17 +229,30 @@ class MangoClient:
             )
         return region
 
+    def _cache_failed(self, exc: OSError) -> None:
+        """Warn (once per client) that the cache cannot be written, and stop using it."""
+        if self._cache_usable:
+            warnings.warn(
+                f"space-mango cannot write its cache at {self._cache.root} ({exc}); "
+                "continuing without caching. Set SPACE_MANGO_CACHE_DIR to a writable "
+                "directory to cache downloads.",
+                UserWarning,
+                stacklevel=4,
+            )
+        self._cache_usable = False
+
+    def _cache_key(self) -> str:
+        return _cache_key_of(self.dataset_info())
+
     def _get_meta(self, path: str) -> Any:
-        """JSON of a metadata endpoint. Online: fetched and stored under the dataset version
-        in the cache. Offline: read back from the cache, never from the network."""
+        """JSON of a metadata endpoint. Online: fetched, and stored under the cache key when
+        caching is enabled. Offline: read back from the cache, never from the network."""
         name = path.removeprefix("/api/v1/").replace("/", "__") + ".json"
         if self._offline:
-            version = (
-                str(self._dataset_info["version"])
-                if self._dataset_info is not None
-                else self._cache.latest_version()
+            key = (
+                self._cache_key() if self._dataset_info is not None else self._cache.latest_key()
             )
-            data = self._cache.read_meta(version, name) if version else None
+            data = self._cache.read_meta(key, name) if key else None
             if data is None:
                 raise CacheMissError(
                     f"Offline mode: {path} is not in the cache at {self._cache.root}. "
@@ -230,8 +260,12 @@ class MangoClient:
                 )
             return data
         data = self._get(path).json()
-        version = data["version"] if path == "/api/v1/dataset" else self.dataset_info()["version"]
-        self._cache.write_meta(str(version), name, data)
+        if self._cache_enabled and self._cache_usable:
+            key = _cache_key_of(data) if path == "/api/v1/dataset" else self._cache_key()
+            try:
+                self._cache.write_meta(key, name, data)
+            except OSError as e:
+                self._cache_failed(e)
         return data
 
     def _ensure_filters_cached(self, region: str) -> None:
@@ -388,38 +422,101 @@ class MangoClient:
             limit=limit,
         )
         use_cache = self._offline or (
-            (self._cache_enabled if cache is None else cache) and limit is None
+            (self._cache_enabled if cache is None else cache)
+            and limit is None
+            and self._cache_usable
         )
+        df: pl.DataFrame | None = None
         if use_cache:
-            df = self._get_data_cached(
-                region,
-                columns,
-                spacecraft,
-                query,
-                _range_filters(region, query),
-                sw_paired_only,
-                normalized_only,
-            )
-            if limit is not None:
-                df = df.head(limit)
-        else:
+            try:
+                df = self._get_data_cached(
+                    region,
+                    columns,
+                    spacecraft,
+                    query,
+                    _range_filters(region, query),
+                    sw_paired_only,
+                    normalized_only,
+                )
+            except _CacheUnusable:
+                df = None  # warned already; ask the server instead
+        if df is None:
             df = pl.read_ipc(self._get(f"/api/v1/regions/{region}/data", params).content)
         return self._result(region, df, query)
 
+    def _write_month(self, key: str, region: str, sc: str, month: date, part: pl.DataFrame) -> None:
+        try:
+            self._cache.write_month(key, region, sc, month, part)
+        except OSError as e:
+            self._cache_failed(e)
+            raise _CacheUnusable from e
+
+    def _same_time(self, key: str, region: str, sc: str, month: date, part: pl.DataFrame) -> bool:
+        """Whether the cached Time fragment of this month equals the freshly fetched Time."""
+        try:
+            cached = self._cache.read_month(key, region, sc, month, ["Time"])["Time"]
+        except FileNotFoundError:
+            return False
+        return cached.len() == part.height and cached.equals(part["Time"])
+
     def _fetch_months(
-        self, version: str, region: str, sc: str, months: list[date], columns: list[str]
+        self,
+        key: str,
+        region: str,
+        sc: str,
+        months: list[date],
+        missing: list[str],
+        needed: list[str],
     ) -> None:
+        """Download Time plus the missing columns of these months and store them. New
+        fragments are only added next to a cached Time fragment equal to the fetched Time;
+        a month where they differ is fetched again with every needed column."""
         params: dict[str, object] = {
             "format": "arrow",
             "spacecraft": [sc],
-            "columns": columns,
+            "columns": ["Time", *[c for c in missing if c != "Time"]],
             "start": month_start(months[0]).isoformat(),
             "stop": month_start(next_month(months[-1])).isoformat(),
         }
         df = pl.read_ipc(self._get(f"/api/v1/regions/{region}/data", params).content)
-        self._cache.write_months(version, region, sc, months, df)
+        df = df.sort("Time", maintain_order=True)
+        stale: list[date] = []
+        for m in months:
+            part = month_slice(df, m)
+            if "Time" in missing:
+                self._write_month(key, region, sc, m, part)
+            elif self._same_time(key, region, sc, m, part):
+                self._write_month(key, region, sc, m, part.drop("Time"))
+            else:
+                stale.append(m)
+        for m in stale:
+            self._fetch_months(key, region, sc, [m], needed, needed)
 
-    def _get_data_cached(
+    def _fetch_plan(
+        self,
+        key: str,
+        region: str,
+        sc: str,
+        months: list[date],
+        columns: list[str],
+        max_months: int | None = MAX_MONTHS_PER_REQUEST,
+    ) -> list[tuple[list[date], list[str]]]:
+        """Requests filling the missing fragments of these months: (months, missing columns).
+        Months missing the same columns are grouped in contiguous runs of at most max_months.
+        A month without its Time fragment is fetched with every column."""
+        by_missing: dict[tuple[str, ...], list[date]] = {}
+        for m in months:
+            missing = self._cache.missing(key, region, sc, m, columns)
+            if missing:
+                by_missing.setdefault(tuple(columns if "Time" in missing else missing), []).append(m)
+        plan: list[tuple[list[date], list[str]]] = []
+        for missing, ms in by_missing.items():
+            for run in contiguous_runs(ms):
+                step = max_months or len(run)
+                plan += [(run[i : i + step], list(missing)) for i in range(0, len(run), step)]
+        return sorted(plan, key=lambda p: p[0][0])
+
+    def _cache_layout(
         self,
         region: str,
         columns: list[str] | None,
@@ -428,8 +525,8 @@ class MangoClient:
         ranges: dict[str, float],
         sw_paired_only: bool,
         normalized_only: bool,
-    ) -> pl.DataFrame:
-        version = str(self.dataset_info()["version"])
+    ) -> tuple[list[str], list[str], dict[str, list[date]], pl.Expr | None]:
+        """(served columns, columns to cache, months per spacecraft, row filter) of a query."""
         served = [c["name"] for c in self._describe_raw(region)["columns"]]
         for c in columns or []:
             if c not in served:
@@ -473,45 +570,72 @@ class MangoClient:
         except QueryError as e:
             raise error_from_query(e) from None
         keep = pl.all_horizontal(exprs) if exprs else None
-
-        frames: list[pl.DataFrame] = []
+        # Last instant asked for: an exclusive stop on a month boundary must not pull that month.
+        last = stop if stop is None or stop_inclusive else stop - timedelta(microseconds=1)
+        months: dict[str, list[date]] = {}
         for sc in spacecraft or sorted(coverage):
             sc_start, sc_stop = coverage[sc]
             lo = max(start, sc_start) if start else sc_start
-            hi = min(stop, sc_stop) if stop else sc_stop
-            if lo > hi:
-                continue
-            months = months_between(lo, hi)
-            missing = [m for m in months if not self._cache.has(version, region, sc, m, cols)]
-            if missing and self._offline:
+            hi = min(last, sc_stop) if last else sc_stop
+            if lo <= hi:
+                months[sc] = months_between(lo, hi)
+        return served, cols, months, keep
+
+    def _get_data_cached(
+        self,
+        region: str,
+        columns: list[str] | None,
+        spacecraft: list[str] | None,
+        query: Mapping[str, object],
+        ranges: dict[str, float],
+        sw_paired_only: bool,
+        normalized_only: bool,
+    ) -> pl.DataFrame:
+        key = self._cache_key()
+        served, cols, months_by_sc, keep = self._cache_layout(
+            region, columns, spacecraft, query, ranges, sw_paired_only, normalized_only
+        )
+        frames: list[pl.DataFrame] = []
+        for sc, months in months_by_sc.items():
+            plan = self._fetch_plan(key, region, sc, months, cols)
+            if plan and self._offline:
+                n = sum(len(chunk) for chunk, _ in plan)
                 raise CacheMissError(
-                    f"Offline mode: {len(missing)} month(s) of {sc}/{region} are not cached "
-                    f"(first: {missing[0]:%Y-%m}). Run once online, or drop offline=True."
+                    f"Offline mode: {n} month(s) of {sc}/{region} are not fully cached "
+                    f"(first: {plan[0][0][0]:%Y-%m}). Run once online, or drop offline=True."
                 )
-            for run in _progress(contiguous_runs(missing), f"Downloading {region}/{sc}"):
-                self._fetch_months(version, region, sc, run, cols)
+            for chunk, missing in _progress(plan, f"Downloading {region}/{sc}"):
+                self._fetch_months(key, region, sc, chunk, missing, cols)
             for m in months:
-                frame = self._read_month(version, region, sc, m, cols).with_columns(SC=pl.lit(sc))
+                frame = self._read_month(key, region, sc, m, cols).with_columns(SC=pl.lit(sc))
                 # Filter month by month (all filters are row-wise) to bound peak memory.
                 frames.append(frame if keep is None else frame.filter(keep))
-        self._cache.evict()
+        self._evict()
         if not frames:
             return self._empty_frame(region, columns or served)
         return pl.concat(frames, how="vertical_relaxed").select(columns or served)
 
+    def _evict(self) -> None:
+        try:
+            self._cache.evict()
+        except FileNotFoundError:
+            pass  # another process removed a fragment while we were evicting
+        except OSError as e:
+            self._cache_failed(e)
+
     def _read_month(
-        self, version: str, region: str, sc: str, month: date, columns: list[str]
+        self, key: str, region: str, sc: str, month: date, columns: list[str]
     ) -> pl.DataFrame:
         try:
-            return self._cache.read_month(version, region, sc, month, columns)
+            return self._cache.read_month(key, region, sc, month, columns)
         except FileNotFoundError:
             # Another process evicted a fragment after has() said it was there: fetch it again.
             if self._offline:
                 raise CacheMissError(
                     f"Offline mode: {month:%Y-%m} of {sc}/{region} was evicted from the cache."
                 ) from None
-            self._fetch_months(version, region, sc, [month], columns)
-            return self._cache.read_month(version, region, sc, month, columns)
+            self._fetch_months(key, region, sc, [month], columns, columns)
+            return self._cache.read_month(key, region, sc, month, columns)
 
     def _empty_frame(self, region: str, columns: list[str]) -> pl.DataFrame:
         """A zero-row frame with the served schema, built from the region's described dtypes
@@ -581,9 +705,16 @@ class MangoClient:
         normalized_only: bool = False,
         **filters: float,
     ) -> dict[str, float]:
-        """Rows and estimated download size (MB) of the matching get_data call. Downloads nothing."""
+        """What the matching get_data call would return and download. Downloads nothing.
+
+        n_rows: rows after filtering. est_mb: their size in MB (what a cache=False call
+        transfers). download_mb_estimate: MB the default cached get_data would download, i.e.
+        whole months of every needed column (requested + filter + flag columns) over the
+        requested time span, unfiltered, minus the fragments already in the cache. It equals
+        est_mb when caching is disabled for this client.
+        """
         columns, spacecraft = _as_names(columns), _as_names(spacecraft)
-        params, _ = self._request_params(
+        params, query = self._request_params(
             region,
             columns=columns,
             spacecraft=spacecraft,
@@ -597,7 +728,60 @@ class MangoClient:
         )
         params.pop("format", None)
         c = self._get(f"/api/v1/regions/{region}/count", params).json()
-        return {"n_rows": c["n_rows"], "est_mb": c["est_bytes"] / 1e6}
+        out = {"n_rows": c["n_rows"], "est_mb": c["est_bytes"] / 1e6}
+        if self._cache_enabled and self._cache_usable:
+            download = self._download_bytes(
+                region, columns, spacecraft, query, sw_paired_only, normalized_only
+            )
+            out["download_mb_estimate"] = download / 1e6
+        else:
+            out["download_mb_estimate"] = out["est_mb"]
+        return out
+
+    def _count_bytes(
+        self, region: str, spacecraft: list[str], columns: list[str], months: list[date]
+    ) -> int:
+        """Server estimate of the bytes of these columns over whole months, unfiltered."""
+        params: dict[str, object] = {
+            "spacecraft": spacecraft,
+            "columns": columns,
+            "start": month_start(months[0]).isoformat(),
+            "stop": month_start(next_month(months[-1])).isoformat(),
+        }
+        return int(self._get(f"/api/v1/regions/{region}/count", params).json()["est_bytes"])
+
+    def _download_bytes(
+        self,
+        region: str,
+        columns: list[str] | None,
+        spacecraft: list[str] | None,
+        query: Mapping[str, object],
+        sw_paired_only: bool,
+        normalized_only: bool,
+    ) -> int:
+        """Bytes the cache path would download for this query (see count)."""
+        key = self._cache_key()
+        _, cols, months_by_sc, _ = self._cache_layout(
+            region, columns, spacecraft, query, _range_filters(region, query),
+            sw_paired_only, normalized_only,
+        )
+        plans = {
+            sc: self._fetch_plan(key, region, sc, months, cols, max_months=None)
+            for sc, months in months_by_sc.items()
+        }
+        if not any(plans.values()):
+            return 0
+        cold = all(
+            len(plan) == 1 and plan[0] == (months_by_sc[sc], cols) for sc, plan in plans.items()
+        )
+        if cold:  # nothing cached: one request over the month-expanded span of every SC
+            every = sorted({m for months in months_by_sc.values() for m in months})
+            return self._count_bytes(region, list(months_by_sc), cols, [every[0], every[-1]])
+        return sum(
+            self._count_bytes(region, [sc], ["Time", *[c for c in missing if c != "Time"]], chunk)
+            for sc, plan in plans.items()
+            for chunk, missing in plan
+        )
 
     def search(self, text: str) -> pl.DataFrame:
         """Columns and filters whose name, unit or description contains `text` (case-insensitive)."""
