@@ -1,5 +1,6 @@
 [project.urls]
 Repository = "https://github.com/LaboratoryOfPlasmaPhysics/mango"
+Documentation = "https://space-mango.readthedocs.io"
 
 [project]
 name = "space-mango"
