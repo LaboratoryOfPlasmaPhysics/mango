@@ -12,6 +12,8 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+import polars as pl
+
 from space_mango.errors import QueryError
 
 FRAMES = ("pgsm",)
@@ -111,3 +113,78 @@ def make_spec(
     raise _bad(
         f"frame='pgsm' is not defined for region '{region}' (magnetosheath and magnetosphere only)."
     )
+
+
+def imf_sign() -> pl.Expr:
+    """s of the SWI basis: sgn(Bx_imf), else sgn(By_imf), else sgn(Bz_imf) (spok swi_base)."""
+    bx, by, bz = pl.col("Bx_imf"), pl.col("By_imf"), pl.col("Bz_imf")
+    return pl.when(bx != 0).then(bx.sign()).when(by != 0).then(by.sign()).otherwise(bz.sign())
+
+
+def folded_cone_deg() -> pl.Expr:
+    """IMF cone angle once in SWI (Bx > 0): acos(|Bx_imf|/|B_imf|) in [0, 90] degrees.
+    NaN when |B_imf| = 0, so such rows are never selected."""
+    b = (pl.col("Bx_imf") ** 2 + pl.col("By_imf") ** 2 + pl.col("Bz_imf") ** 2).sqrt()
+    return (pl.col("Bx_imf").abs() / b).clip(0.0, 1.0).arccos().degrees()
+
+
+def candidates(spec: PgsmSpec) -> list[tuple[pl.Expr, int]]:
+    """(row predicate, sign) pairs; each row passing a predicate gives one output row.
+    Magnetosheath: sign = target sgn(Bx_imf), output cone f (+1) or 180 - f (-1).
+    Magnetosphere: +1 = the row as measured, -1 = its tilt mirror."""
+    if spec.region == "magnetosheath":
+        assert spec.cone is not None
+        a, b = spec.cone
+        f = folded_cone_deg()
+        return [(f.is_between(a, b), 1), ((180.0 - f).is_between(a, b), -1)]
+    assert spec.tilt is not None
+    t1, t2 = spec.tilt
+    psi = pl.col("tilt").degrees()
+    return [(psi.is_between(t1, t2), 1), ((-psi).is_between(t1, t2), -1)]
+
+
+def _msh_rows(df: pl.DataFrame, sign: int, clock: float) -> pl.DataFrame:
+    """Eqs 2.19-2.20 with the target sgn(Bx_imf) = sign and delta = clock - 90 deg.
+    Written as the linear rotation of (Y, Z) by delta, azimuth from +Z towards +Y (eq 2.21):
+    rho sin(a + d) = Y cos d + Z sin d, rho cos(a + d) = Z cos d - Y sin d."""
+    d = math.radians(clock - 90.0)
+    cos_d, sin_d = math.cos(d), math.sin(d)
+    s = float(sign)
+
+    def rot(y: pl.Expr, z: pl.Expr) -> tuple[pl.Expr, pl.Expr]:
+        return y * cos_d + z * sin_d, z * cos_d - y * sin_d
+
+    # sign = -1 is the Y mirror before the rotation: positions and velocities (polar)
+    # (X, -Y, Z); magnetic field (axial) (-Bx, By, -Bz).
+    y, z = rot(s * pl.col("Y_swi_norm"), pl.col("Z_swi_norm"))
+    vy, vz = rot(s * pl.col("Vy_swi"), pl.col("Vz_swi"))
+    by, bz = rot(pl.col("By_swi"), s * pl.col("Bz_swi"))
+    return df.with_columns(
+        X_pgsm_norm=pl.col("X_swi_norm"), Y_pgsm_norm=y, Z_pgsm_norm=z,
+        Bx_pgsm=s * pl.col("Bx_swi"), By_pgsm=by, Bz_pgsm=bz,
+        Vx_pgsm=pl.col("Vx_swi"), Vy_pgsm=vy, Vz_pgsm=vz,
+        mirrored=imf_sign() != s,
+        bx_sign=pl.lit(sign, dtype=pl.Int8),
+    )
+
+
+def to_pgsm(df: pl.DataFrame, spec: PgsmSpec) -> pl.DataFrame:
+    """Select and transform df (which must hold REQUIRED_COLUMNS[spec.region]).
+    Adds OUTPUT_COLUMNS[spec.region]; keeps every input column as measured."""
+    missing = [c for c in REQUIRED_COLUMNS[spec.region] if c not in df.columns]
+    if missing:
+        raise _bad(f"PGSM ({spec.region}) needs the columns {missing}.")
+    parts: list[pl.DataFrame] = []
+    for keep, sign in candidates(spec):
+        rows = df.filter(keep)
+        if spec.region == "magnetosheath":
+            assert spec.clock is not None, "clock is required to transform"
+            parts.append(_msh_rows(rows, sign, spec.clock))
+        else:
+            parts.append(_msp_rows(rows, sign))
+    out = pl.concat(parts, how="vertical")
+    return out.sort("Time", maintain_order=True) if "Time" in out.columns else out
+
+
+def _msp_rows(df: pl.DataFrame, sign: int) -> pl.DataFrame:
+    raise NotImplementedError("magnetosphere PGSM: Task 4")
