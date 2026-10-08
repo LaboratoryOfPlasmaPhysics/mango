@@ -67,3 +67,10 @@ def test_client_import_does_not_pull_server_dependencies():
         "assert not bad, bad"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_swi_descriptions_state_the_verified_construction():
+    assert "sgn(Bx_imf)" in COLUMNS["Bx_swi"].computed
+    assert "29.8 km/s along Y_GSM" in COLUMNS["Vx_swi"].computed
+    assert "re-normalized" in COLUMNS["X_swi_norm"].computed
+    assert "23.4" in COLUMNS["tilt"].computed

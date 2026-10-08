@@ -80,6 +80,16 @@ def _col(
     return ColumnInfo(unit, frame, description, computed, regions, per_region)
 
 
+# SWI construction, verified against the upstream notebook MSH_GSM_to_SWI.ipynb and on
+# 132k served rows (2026-10-08). R = rows (X, Y, Z) of the SWI basis of each row.
+_SWI_BASIS = ("SWI: X = -V_sw/|V_sw| (served V_sw), Z = X x (s B_imf)/|.|, Y = Z x X, "
+              "s = sgn(Bx_imf) (else sgn(By_imf), else sgn(Bz_imf))")
+_SWI_B = _SWI_BASIS + "; B_swi = s R B, so the IMF has Bx > 0 along +Y_SWI (sgn(Bx_imf) factor)"
+_SWI_V = _SWI_BASIS + "; V_swi = R (V - 29.8 km/s along Y_GSM) (Earth orbital motion removed)"
+_SWI_R = (_SWI_BASIS + "; R applied to X/Y/Z_gsm_norm, then re-normalized between the mean "
+          "Shue98/Jelinek2012 boundaries at the SWI angles and clipped to [0, 1]: the radius "
+          "can differ from |r_gsm_norm| near a boundary")
+
 COLUMNS: dict[str, ColumnInfo] = {
     "Time": _col("", "", "Sample time (UTC assumed), on a 5 s grid",
                  "5 s averages of the mission data"),
@@ -111,7 +121,8 @@ COLUMNS: dict[str, ColumnInfo] = {
     "Beta_sw": _col("", "", "Upstream plasma beta", "OMNI (electrons and He included)", _PAIRED),
     "Ma_sw": _col("", "", "Upstream Alfvén Mach number", "OMNI", _PAIRED),
     "tilt": _col("rad", "", "Dipole tilt angle (positive near June solstice)",
-                 "Analytic approximation (spok.get_tilt), not IGRF", _MSP),
+                 "Analytic approximation, not IGRF: 23.4°·cos(2π(doy−172)/365.25) "
+                 "+ 11.2°·cos(2π(UT−16.72)/24) (spok.get_tilt)", _MSP),
     "R_mp": _col("R_E", "radial", "Magnetopause distance along the spacecraft direction",
                  "Magnetopause model driven by the paired solar wind", _PAIRED),
     "R_bs": _col("R_E", "radial", "Bow-shock distance along the spacecraft direction",
@@ -133,20 +144,20 @@ COLUMNS: dict[str, ColumnInfo] = {
     "Z_gsm_norm": _col("R_E", "GSM", "Normalized position, Z: radially rescaled between fixed average boundaries",
                        "Same direction as the spacecraft position", _PAIRED),
     "Bx_swi": _col("nT", "SWI", "Local magnetic field in the SWI frame, X",
-                   "SWI: X = -V_sw/|V_sw|, IMF in the X-Y plane", _MSH),
+                   _SWI_B, _MSH),
     "By_swi": _col("nT", "SWI", "Local magnetic field in the SWI frame, Y",
-                   "SWI: X = -V_sw/|V_sw|, IMF in the X-Y plane", _MSH),
+                   _SWI_B, _MSH),
     "Bz_swi": _col("nT", "SWI", "Local magnetic field in the SWI frame, Z",
-                   "SWI: X = -V_sw/|V_sw|, IMF in the X-Y plane", _MSH),
+                   _SWI_B, _MSH),
     "Vx_swi": _col("km/s", "SWI", "Local ion velocity in the SWI frame, X (aberration-corrected)",
-                   "Rotated after removing Earth's 29.8 km/s orbital motion", _MSH),
+                   _SWI_V, _MSH),
     "Vy_swi": _col("km/s", "SWI", "Local ion velocity in the SWI frame, Y (aberration-corrected)",
-                   "Rotated after removing Earth's 29.8 km/s orbital motion", _MSH),
+                   _SWI_V, _MSH),
     "Vz_swi": _col("km/s", "SWI", "Local ion velocity in the SWI frame, Z (aberration-corrected)",
-                   "Rotated after removing Earth's 29.8 km/s orbital motion", _MSH),
-    "X_swi_norm": _col("R_E", "SWI", "Normalized position in the SWI frame, X", "SWI rotation of X/Y/Z_gsm_norm", _MSH),
-    "Y_swi_norm": _col("R_E", "SWI", "Normalized position in the SWI frame, Y", "SWI rotation of X/Y/Z_gsm_norm", _MSH),
-    "Z_swi_norm": _col("R_E", "SWI", "Normalized position in the SWI frame, Z", "SWI rotation of X/Y/Z_gsm_norm", _MSH),
+                   _SWI_V, _MSH),
+    "X_swi_norm": _col("R_E", "SWI", "Normalized position in the SWI frame, X", _SWI_R, _MSH),
+    "Y_swi_norm": _col("R_E", "SWI", "Normalized position in the SWI frame, Y", _SWI_R, _MSH),
+    "Z_swi_norm": _col("R_E", "SWI", "Normalized position in the SWI frame, Z", _SWI_R, _MSH),
 }
 
 # ---- Filter catalog: single source of truth ----

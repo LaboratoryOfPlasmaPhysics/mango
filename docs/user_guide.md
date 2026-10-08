@@ -167,6 +167,11 @@ All inherit from `MangoError`.
 
 ## Known caveats
 
-<!-- SWI-frame caveat: wording pending PI decision (see spec §9 q1) -->
+- **SWI columns (magnetosheath).** The SWI basis of each row is built from that row's
+  `V*_sw` and `B*_imf`; `B*_swi` includes the factor sgn(Bx_imf), so the IMF always has
+  Bx > 0 in SWI. `*_swi_norm` was re-normalized between mean boundaries after the
+  rotation: near the magnetopause or bow shock (about 9 % of rows) its radius differs from
+  that of `*_gsm_norm`, by up to about 1.7 R_E. SWI columns are null unless `Norma_pos`
+  and `SW_pairing` are both true.
 
 Column names are frozen for the data paper (in preparation); they will not be renamed.
