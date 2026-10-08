@@ -168,8 +168,8 @@ All inherit from `MangoError`.
 ## Known caveats
 
 - **SWI columns (magnetosheath).** The SWI basis of each row is built from that row's
-  `V*_sw` and `B*_imf`; `B*_swi` includes the factor sgn(Bx_imf), so the IMF always has
-  Bx > 0 in SWI. `*_swi_norm` was re-normalized between mean boundaries after the
+  `V*_sw` and `B*_imf`; `B*_swi` includes the factor sgn(Bx_imf), so in SWI the IMF lies
+  in the X–Y plane with By > 0 and, up to aberration, Bx > 0. `*_swi_norm` was re-normalized between mean boundaries after the
   rotation: near the magnetopause or bow shock (about 9 % of rows) its radius differs from
   that of `*_gsm_norm`, by up to about 1.7 R_E. SWI columns are null unless `Norma_pos`
   and `SW_pairing` are both true.

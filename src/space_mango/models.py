@@ -84,7 +84,7 @@ def _col(
 # 132k served rows (2026-10-08). R = rows (X, Y, Z) of the SWI basis of each row.
 _SWI_BASIS = ("SWI: X = -V_sw/|V_sw| (served V_sw), Z = X x (s B_imf)/|.|, Y = Z x X, "
               "s = sgn(Bx_imf) (else sgn(By_imf), else sgn(Bz_imf))")
-_SWI_B = _SWI_BASIS + "; B_swi = s R B, so the IMF has Bx > 0 along +Y_SWI (sgn(Bx_imf) factor)"
+_SWI_B = _SWI_BASIS + "; B_swi = s R B (sgn(Bx_imf) factor): the IMF lies in the X-Y plane with By_swi > 0 (and Bx_swi ~ |Bx_imf| > 0, up to aberration)"
 _SWI_V = _SWI_BASIS + "; V_swi = R (V - 29.8 km/s along Y_GSM) (Earth orbital motion removed)"
 _SWI_R = (_SWI_BASIS + "; R applied to X/Y/Z_gsm_norm, then re-normalized between the mean "
           "Shue98/Jelinek2012 boundaries at the SWI angles and clipped to [0, 1]: the radius "
