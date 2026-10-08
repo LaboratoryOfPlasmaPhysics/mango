@@ -140,3 +140,14 @@ def test_region_objects(pc):
     assert msh.count(frame="pgsm", cone=[0, 180])["n_rows"] == 4
     msp = MagnetosphereAPI(lambda: pc)
     assert len(msp.get_data(frame="pgsm", tilt=[5, 10])) == 2
+
+
+def test_query_records_the_request_not_the_fetch(pc):
+    r = pc.get_data(MSP, frame="pgsm", tilt=[5, 10], columns=["Time"])
+    assert r.query["columns"] == ["Time"]
+    assert "tilt_min" not in r.query
+    assert r.query["prefilter"]["tilt_max"] == pytest.approx(math.radians(10))
+    r = pc.get_data(MSH, frame="pgsm", cone=[0, 180], clock=0, columns=["Time", "Np"], pd_sw_max=10)
+    assert r.query["columns"] == ["Time", "Np"]
+    assert r.query["pd_sw_max"] == 10.0
+    assert r.query["prefilter"] == {}

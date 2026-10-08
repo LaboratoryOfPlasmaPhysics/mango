@@ -825,8 +825,11 @@ class MangoClient:
             raise error_from_query(e) from None
         if columns is not None:
             df = df.select([*columns, *PGSM_OUTPUT_COLUMNS[spec.region]])
+        prefilter = {k: v for k, v in extra.items() if k not in filters}
         query = {
-            **res.query,
+            **{k: v for k, v in res.query.items() if k not in prefilter},
+            "columns": columns,
+            "prefilter": prefilter,
             "frame": "pgsm",
             "cone": spec.cone,
             "clock": spec.clock,
