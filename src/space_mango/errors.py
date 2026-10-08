@@ -57,6 +57,10 @@ class CacheMissError(MangoError):
     pass
 
 
+class PgsmError(MangoError, ValueError):
+    """A misused PGSM parameter (frame, cone, clock, tilt)."""
+
+
 _CODE_TO_ERROR: dict[str, type[MangoError]] = {
     "unknown_spacecraft": UnknownSpacecraftError,
     "unknown_column": UnknownColumnError,
@@ -66,6 +70,7 @@ _CODE_TO_ERROR: dict[str, type[MangoError]] = {
     "filter_column_missing": MangoFilterError,
     "flag_unavailable": MangoFilterError,
     "bad_time": TimeParseError,
+    "bad_pgsm": PgsmError,
 }
 
 

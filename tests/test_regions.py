@@ -34,3 +34,14 @@ def test_region_object_delegates(client):
     assert msh.count(bz_imf_max=-2)["n_rows"] == 2
     assert "column" in msh.describe().columns
     assert "bow shock" in repr(msh)
+
+
+def test_pgsm_parameters_only_where_they_apply():
+    from space_mango._regions_generated import MagnetosphereAPI, SolarWindAPI
+
+    msh = inspect.signature(MagnetosheathAPI.get_data).parameters
+    msp = inspect.signature(MagnetosphereAPI.get_data).parameters
+    sw = inspect.signature(SolarWindAPI.get_data).parameters
+    assert {"frame", "cone", "clock"} <= set(msh) and "tilt" not in msh
+    assert {"frame", "tilt"} <= set(msp) and "cone" not in msp
+    assert "frame" not in sw

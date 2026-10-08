@@ -19,6 +19,10 @@ _FIXED = (
     "normalized_only",
     "limit",
     "cache",
+    "frame",
+    "cone",
+    "clock",
+    "tilt",
 )
 
 

@@ -2,12 +2,20 @@ import hashlib
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
 from space_mango.errors import QueryError, did_you_mean
-from space_mango.filtering import COUNT_PARAMS, DATA_PARAMS, build_filter_exprs, parse_range_params
+from space_mango.filtering import (
+    COUNT_PARAMS,
+    DATA_PARAMS,
+    PGSM_COUNT_PARAMS,
+    build_filter_exprs,
+    parse_range_params,
+)
 from space_mango.models import Region, columns_for, filters_for
+from space_mango.pgsm import OUTPUT_COLUMNS, PgsmSpec, candidates
 
 _DEFAULT_DATA_DIR = Path("/data/mango")
 MAX_TIMELINE_SPAN = timedelta(days=31)
@@ -160,22 +168,29 @@ class MangoDataset:
         stop_inclusive: bool = False,
         sw_paired_only: bool = False,
         normalized_only: bool = False,
+        pgsm: PgsmSpec | None = None,
     ) -> tuple[int, int]:
-        lf = self._plan(
-            region,
-            raw_params,
-            columns=columns,
-            spacecraft=spacecraft,
-            start=start,
-            stop=stop,
-            stop_inclusive=stop_inclusive,
-            sw_paired_only=sw_paired_only,
-            normalized_only=normalized_only,
-            params=COUNT_PARAMS,
+        """Rows and estimated bytes of the matching /data request. With pgsm: the rows the
+        client's PGSM transform would output (a row selected twice counts twice)."""
+        if pgsm is not None:
+            normalized_only = True
+            sw_paired_only = sw_paired_only or pgsm.region == Region.magnetosheath.value
+        common: dict[str, Any] = dict(
+            spacecraft=spacecraft, start=start, stop=stop, stop_inclusive=stop_inclusive,
+            sw_paired_only=sw_paired_only, normalized_only=normalized_only,
+            params=COUNT_PARAMS | PGSM_COUNT_PARAMS,
         )
-        n_rows = int(lf.select(pl.len()).collect().item())
+        lf = self._plan(region, raw_params, columns=columns, **common)  # validates columns
         row_bytes = sum(_dtype_bytes(dt) for dt in lf.collect_schema().dtypes())
-        return n_rows, n_rows * row_bytes
+        if pgsm is None:
+            n_rows = int(lf.select(pl.len()).collect().item())
+            return n_rows, n_rows * row_bytes
+        full = self._plan(region, raw_params, columns=None, **common)
+        n_rows = sum(
+            int(full.filter(keep).select(pl.len()).collect().item())
+            for keep, _ in candidates(pgsm)
+        )
+        return n_rows, n_rows * (row_bytes + 8 * len(OUTPUT_COLUMNS[pgsm.region]))
 
     def timeline(
         self, sc: str, start: datetime, stop: datetime, columns: list[str] | None

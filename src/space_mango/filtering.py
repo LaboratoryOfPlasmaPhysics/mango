@@ -21,6 +21,10 @@ COUNT_PARAMS = frozenset({
 })
 DATA_PARAMS = COUNT_PARAMS | {"limit", "format"}
 TIMELINE_PARAMS = frozenset({"sc", "start", "stop", "columns", "format"})
+PGSM_COUNT_PARAMS = frozenset({
+    "frame", "pgsm_cone_min", "pgsm_cone_max", "pgsm_tilt_min", "pgsm_tilt_max",
+})
+"""PGSM selection parameters, accepted by /count only (/data refuses them)."""
 
 
 def reject_unknown_params(endpoint: str, keys: Iterable[str], allowed: frozenset[str]) -> None:
