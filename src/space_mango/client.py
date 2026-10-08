@@ -5,7 +5,7 @@ import numbers
 import os
 import re
 import warnings
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, TypeVar
@@ -28,6 +28,7 @@ from space_mango.errors import (
     CacheMissError,
     MangoError,
     MangoFilterError,
+    PgsmError,
     QueryError,
     ServerError,
     UnknownColumnError,
@@ -39,6 +40,21 @@ from space_mango.errors import (
 )
 from space_mango.filtering import build_filter_exprs, time_window
 from space_mango.models import filters_for
+from space_mango.pgsm import (
+    COLUMN_INFO as PGSM_COLUMN_INFO,
+)
+from space_mango.pgsm import (
+    OUTPUT_COLUMNS as PGSM_OUTPUT_COLUMNS,
+)
+from space_mango.pgsm import (
+    REQUIRED_COLUMNS as PGSM_REQUIRED_COLUMNS,
+)
+from space_mango.pgsm import (
+    THESIS,
+    PgsmSpec,
+    make_spec,
+    to_pgsm,
+)
 from space_mango.result import MangoResult
 from space_mango.timeparse import TimeLike, to_iso
 
@@ -160,6 +176,55 @@ def _range_filters(region: str, query: Mapping[str, object]) -> dict[str, float]
         if suffix in ("min", "max") and name in names and isinstance(value, float):
             out[key] = value
     return out
+
+
+def _pgsm_spec(
+    region: str,
+    frame: str | None,
+    cone: object,
+    clock: object,
+    tilt: object,
+    *,
+    require_clock: bool = True,
+) -> PgsmSpec | None:
+    try:
+        return make_spec(region, frame, cone, clock, tilt, require_clock=require_clock)  # pyright: ignore[reportArgumentType]
+    except QueryError as e:
+        raise error_from_query(e) from None
+
+
+def _pgsm_fetch_args(
+    spec: PgsmSpec,
+    columns: list[str] | None,
+    filters: Mapping[str, object],
+) -> tuple[list[str] | None, dict[str, object]]:
+    """Columns and range filters to fetch for a PGSM query: the requested columns plus the
+    transform inputs; for the magnetosphere, |tilt| <= max(|t1|, |t2|) (radians) narrows the
+    download (the exact selection is done by the transform)."""
+    if spec.region == "magnetosphere" and {"tilt_min", "tilt_max"} & set(filters):
+        raise PgsmError(
+            "tilt_min/tilt_max (radians, plain selection) cannot be combined with "
+            "frame='pgsm'; use tilt=[min, max] in degrees."
+        )
+    fetch = (
+        None
+        if columns is None
+        else list(dict.fromkeys([*columns, *PGSM_REQUIRED_COLUMNS[spec.region]]))
+    )
+    extra: dict[str, object] = dict(filters)
+    if spec.tilt is not None:
+        t = math.radians(max(abs(spec.tilt[0]), abs(spec.tilt[1])))
+        extra |= {"tilt_min": -t, "tilt_max": t}
+    return fetch, extra
+
+
+def _pgsm_count_params(spec: PgsmSpec) -> dict[str, object]:
+    params: dict[str, object] = {"frame": "pgsm"}
+    if spec.cone is not None:
+        params |= {"pgsm_cone_min": str(spec.cone[0]), "pgsm_cone_max": str(spec.cone[1])}
+    if spec.tilt is not None:
+        params |= {"pgsm_tilt_min": str(spec.tilt[0]), "pgsm_tilt_max": str(spec.tilt[1])}
+    return params
 
 
 class MangoClient:
@@ -399,6 +464,10 @@ class MangoClient:
         time_min: TimeLike = None,
         time_max: TimeLike = None,
         cache: bool | None = None,
+        frame: str | None = None,
+        cone: Sequence[float] | None = None,
+        clock: float | None = None,
+        tilt: Sequence[float] | None = None,
         **filters: float,
     ) -> MangoResult:
         """Query one region. Range filters are keyword arguments: bz_imf_max=-2, d_msh_max=0.3.
@@ -410,7 +479,30 @@ class MangoClient:
         keyed by dataset version, and filtered locally (same filtering code as the server).
         cache=False, or a limit, sends the query to the server instead.
         columns and spacecraft take one name or a list of names.
+
+        frame="pgsm" returns PGSM data (Michotte de Welle 2024): magnetosheath with
+        cone=[min, max] (degrees, IMF angle to X_GSM, 0 = sunward) and clock=<target degrees>;
+        magnetosphere with tilt=[min, max] (degrees). Implies normalized_only (and
+        sw_paired_only in the magnetosheath). limit applies to the rows fetched, before the
+        transform. See the PGSM section of the user guide.
         """
+        if frame is not None or cone is not None or clock is not None or tilt is not None:
+            self._check_region(region)
+            spec = _pgsm_spec(region, frame, cone, clock, tilt)
+            if spec is not None:
+                return self._get_data_pgsm(
+                    spec,
+                    _as_names(columns),
+                    spacecraft=spacecraft,
+                    start=start,
+                    stop=stop,
+                    sw_paired_only=sw_paired_only,
+                    limit=limit,
+                    time_min=time_min,
+                    time_max=time_max,
+                    cache=cache,
+                    filters=filters,
+                )
         columns, spacecraft = _as_names(columns), _as_names(spacecraft)
         params, query = self._request_params(
             region,
@@ -697,6 +789,53 @@ class MangoClient:
             ).with_columns(pl.col("start", "stop").str.to_datetime(time_unit="us"))
         return self._spacecraft_cache[region]
 
+    def _get_data_pgsm(
+        self,
+        spec: PgsmSpec,
+        columns: list[str] | None,
+        *,
+        spacecraft: Names,
+        start: TimeLike,
+        stop: TimeLike,
+        sw_paired_only: bool,
+        limit: int | None,
+        time_min: TimeLike,
+        time_max: TimeLike,
+        cache: bool | None,
+        filters: Mapping[str, object],
+    ) -> MangoResult:
+        fetch, extra = _pgsm_fetch_args(spec, columns, filters)
+        res = self.get_data(
+            spec.region,
+            columns=fetch,
+            spacecraft=spacecraft,
+            start=start,
+            stop=stop,
+            sw_paired_only=sw_paired_only or spec.region == "magnetosheath",
+            normalized_only=True,
+            limit=limit,
+            time_min=time_min,
+            time_max=time_max,
+            cache=cache,
+            **extra,  # pyright: ignore[reportArgumentType]
+        )
+        try:
+            df = to_pgsm(res.data, spec)
+        except QueryError as e:
+            raise error_from_query(e) from None
+        if columns is not None:
+            df = df.select([*columns, *PGSM_OUTPUT_COLUMNS[spec.region]])
+        query = {
+            **res.query,
+            "frame": "pgsm",
+            "cone": spec.cone,
+            "clock": spec.clock,
+            "tilt": spec.tilt,
+            "reference": THESIS,
+        }
+        info = {**res.columns_info, **PGSM_COLUMN_INFO}
+        return MangoResult(df, info, res.version, query, res.citation, spec.region)
+
     def count(
         self,
         region: str,
@@ -707,6 +846,10 @@ class MangoClient:
         stop: TimeLike = None,
         sw_paired_only: bool = False,
         normalized_only: bool = False,
+        frame: str | None = None,
+        cone: Sequence[float] | None = None,
+        clock: float | None = None,
+        tilt: Sequence[float] | None = None,
         **filters: float,
     ) -> dict[str, float]:
         """What the matching get_data call would return and download. Downloads nothing.
@@ -716,7 +859,23 @@ class MangoClient:
         whole months of every needed column (requested + filter + flag columns) over the
         requested time span, unfiltered, minus the fragments already in the cache. It equals
         est_mb when caching is disabled for this client.
+
+        With frame="pgsm", n_rows is the exact number of PGSM rows (computed by the server).
         """
+        spec = None
+        if frame is not None or cone is not None or clock is not None or tilt is not None:
+            self._check_region(region)
+            spec = _pgsm_spec(region, frame, cone, clock, tilt, require_clock=False)
+        if spec is not None:
+            if "pgsm_count" not in self.dataset_info().get("features", []):
+                raise ServerError(
+                    f"The MANGO server at {self._base_url} cannot count PGSM rows (it needs "
+                    "space-mango >= 0.3 on the server); get_data(frame='pgsm') still works."
+                )
+            fetch, extra = _pgsm_fetch_args(spec, _as_names(columns), filters)
+            columns, filters = fetch, extra  # pyright: ignore[reportAssignmentType]
+            normalized_only = True
+            sw_paired_only = sw_paired_only or spec.region == "magnetosheath"
         columns, spacecraft = _as_names(columns), _as_names(spacecraft)
         params, query = self._request_params(
             region,
@@ -731,6 +890,8 @@ class MangoClient:
             filters=filters,
         )
         params.pop("format", None)
+        if spec is not None:
+            params |= _pgsm_count_params(spec)
         c = self._get(f"/api/v1/regions/{region}/count", params).json()
         out = {"n_rows": c["n_rows"], "est_mb": c["est_bytes"] / 1e6}
         if self._cache_enabled and self._cache_usable:

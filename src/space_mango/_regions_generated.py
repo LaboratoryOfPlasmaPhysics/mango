@@ -28,6 +28,8 @@ class MagnetosphereAPI(RegionAPI):
         normalized_only: bool = False,
         limit: int | None = None,
         cache: bool | None = None,
+        frame: str | None = None,
+        tilt: list[float] | None = None,
         bz_imf_min: float | None = None,
         bz_imf_max: float | None = None,
         by_imf_min: float | None = None,
@@ -83,6 +85,7 @@ class MagnetosphereAPI(RegionAPI):
         np_min / np_max : Local plasma density [cm⁻³]
         tp_min / tp_max : Local plasma temperature [K]
         bz_min / bz_max : Local Bz (GSM) [nT]
+        frame='pgsm': PGSM data, tilt=[min, max] in degrees (user guide, PGSM).
         """
         return self._call("get_data", locals())
 
@@ -95,6 +98,8 @@ class MagnetosphereAPI(RegionAPI):
         stop: TimeLike = None,
         sw_paired_only: bool = False,
         normalized_only: bool = False,
+        frame: str | None = None,
+        tilt: list[float] | None = None,
         bz_imf_min: float | None = None,
         bz_imf_max: float | None = None,
         by_imf_min: float | None = None,
@@ -151,6 +156,9 @@ class MagnetosheathAPI(RegionAPI):
         normalized_only: bool = False,
         limit: int | None = None,
         cache: bool | None = None,
+        frame: str | None = None,
+        cone: list[float] | None = None,
+        clock: float | None = None,
         bz_imf_min: float | None = None,
         bz_imf_max: float | None = None,
         by_imf_min: float | None = None,
@@ -203,6 +211,8 @@ class MagnetosheathAPI(RegionAPI):
         np_min / np_max : Local plasma density [cm⁻³]
         tp_min / tp_max : Local plasma temperature [K]
         bz_min / bz_max : Local Bz (GSM) [nT]
+        frame='pgsm': PGSM data, cone=[min, max] (degrees, IMF angle to X_GSM,
+        0 = sunward) and clock=<target degrees> (user guide, PGSM).
         """
         return self._call("get_data", locals())
 
@@ -215,6 +225,9 @@ class MagnetosheathAPI(RegionAPI):
         stop: TimeLike = None,
         sw_paired_only: bool = False,
         normalized_only: bool = False,
+        frame: str | None = None,
+        cone: list[float] | None = None,
+        clock: float | None = None,
         bz_imf_min: float | None = None,
         bz_imf_max: float | None = None,
         by_imf_min: float | None = None,
@@ -290,8 +303,7 @@ class SolarWindAPI(RegionAPI):
         z_gsm_min / z_gsm_max : Z GSM coordinate [R_E]
         np_min / np_max : Local plasma density [cm⁻³]
         tp_min / tp_max : Local plasma temperature [K]
-        bz_min / bz_max : Local Bz (GSM) [nT]
-        """
+        bz_min / bz_max : Local Bz (GSM) [nT]        """
         return self._call("get_data", locals())
 
     def count(
