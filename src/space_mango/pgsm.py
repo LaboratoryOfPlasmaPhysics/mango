@@ -41,6 +41,23 @@ OUTPUT_COLUMNS: dict[str, list[str]] = {
 }
 
 
+def _info(unit: str, description: str) -> dict[str, str]:
+    return {"unit": unit, "frame": "PGSM", "description": description}
+
+
+COLUMN_INFO: dict[str, dict[str, str]] = {
+    **{f"{c}_pgsm_norm": _info("R_E", f"Normalized position in PGSM, {c}") for c in "XYZ"},
+    **{f"B{c}_pgsm": _info("nT", f"Local magnetic field in PGSM, {c.upper()}") for c in "xyz"},
+    **{f"V{c}_pgsm": _info("km/s", f"Local ion velocity in PGSM, {c.upper()}") for c in "xyz"},
+    "mirrored": {"unit": "", "frame": "", "description":
+                 "True when the row was produced by a PGSM symmetry (magnetosheath: IMF Bx sign differs from the measured one; magnetosphere: tilt mirror psi -> -psi)"},
+    "bx_sign": {"unit": "", "frame": "", "description":
+                "Sign of IMF Bx given to the row in PGSM (+1 or -1)"},
+    "tilt_pgsm": {"unit": "deg", "frame": "", "description":
+                  "Dipole tilt of the row in PGSM (negated on mirrored rows)"},
+}
+
+
 @dataclass(frozen=True)
 class PgsmSpec:
     region: str
@@ -191,4 +208,15 @@ def to_pgsm(df: pl.DataFrame, spec: PgsmSpec) -> pl.DataFrame:
 
 
 def _msp_rows(df: pl.DataFrame, sign: int) -> pl.DataFrame:
-    raise NotImplementedError("magnetosphere PGSM: Task 4")
+    """sign = +1: the row as measured. sign = -1: eqs 2.14-2.16, the tilt mirror psi -> -psi,
+    i.e. a rotation by pi about X together with B -> -B: positions (X, -Y, -Z),
+    B (-Bx, By, Bz), V (Vx, -Vy, -Vz) (B -> -B does not act on V)."""
+    m = float(sign)
+    return df.with_columns(
+        X_pgsm_norm=pl.col("X_gsm_norm"), Y_pgsm_norm=m * pl.col("Y_gsm_norm"),
+        Z_pgsm_norm=m * pl.col("Z_gsm_norm"),
+        Bx_pgsm=m * pl.col("Bx"), By_pgsm=pl.col("By"), Bz_pgsm=pl.col("Bz"),
+        Vx_pgsm=pl.col("Vx"), Vy_pgsm=m * pl.col("Vy"), Vz_pgsm=m * pl.col("Vz"),
+        mirrored=pl.lit(sign == -1),
+        tilt_pgsm=m * pl.col("tilt").degrees(),
+    )

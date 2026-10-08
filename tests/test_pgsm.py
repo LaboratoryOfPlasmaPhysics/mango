@@ -6,6 +6,7 @@ import pytest
 
 from space_mango.errors import MangoError, PgsmError, QueryError, error_from_query
 from space_mango.pgsm import (
+    COLUMN_INFO,
     OUTPUT_COLUMNS,
     PgsmSpec,
     candidates,
@@ -237,3 +238,75 @@ def test_missing_input_column():
 def test_candidates_shape():
     preds = candidates(spec((0.0, 90.0), 0.0))
     assert [s for _, s in preds] == [1, -1]
+
+
+MSP = "magnetosphere"
+
+
+def dipole(r, psi):
+    """Earth dipole (unit moment) at GSM position r for tilt psi (rad): m = -(sin psi, 0, cos psi)."""
+    m = -np.array([math.sin(psi), 0.0, math.cos(psi)])
+    rn = np.linalg.norm(r)
+    u = np.asarray(r, float) / rn
+    return (3.0 * np.dot(m, u) * u - m) / rn**3
+
+
+def msp_frame(points, psi):
+    rows = []
+    for r in points:
+        b = dipole(r, psi)
+        rows.append({
+            "tilt": psi, "Bx": b[0], "By": b[1], "Bz": b[2],
+            "Vx": 10.0, "Vy": 20.0, "Vz": 30.0,
+            "X_gsm_norm": r[0], "Y_gsm_norm": r[1], "Z_gsm_norm": r[2],
+        })
+    return pl.DataFrame(rows)
+
+
+POINTS = [(5.0, 2.0, 3.0), (-3.0, -4.0, 6.0), (8.0, 0.5, -2.0)]
+
+
+def test_tilt_mirror_maps_dipole_at_psi_to_dipole_at_minus_psi():
+    psi = math.radians(24.0)
+    out = to_pgsm(msp_frame(POINTS, psi), PgsmSpec(MSP, tilt=(-25.0, -23.0)))
+    assert out.height == len(POINTS) and out["mirrored"].all()
+    for row in out.iter_rows(named=True):
+        r = (row["X_pgsm_norm"], row["Y_pgsm_norm"], row["Z_pgsm_norm"])
+        b = (row["Bx_pgsm"], row["By_pgsm"], row["Bz_pgsm"])
+        assert b == pytest.approx(tuple(dipole(r, -psi)))
+        assert row["tilt_pgsm"] == pytest.approx(-24.0)
+
+
+def test_mirror_vectors_and_originals():
+    df = msp_frame([POINTS[0]], math.radians(2.0))
+    out = to_pgsm(df, PgsmSpec(MSP, tilt=(-5.0, 5.0)))
+    orig = out.filter(~pl.col("mirrored")).row(0, named=True)
+    mirr = out.filter(pl.col("mirrored")).row(0, named=True)
+    assert (orig["X_pgsm_norm"], orig["Y_pgsm_norm"], orig["Z_pgsm_norm"]) == POINTS[0]
+    assert (mirr["X_pgsm_norm"], mirr["Y_pgsm_norm"], mirr["Z_pgsm_norm"]) == (5.0, -2.0, -3.0)
+    assert (mirr["Bx_pgsm"], mirr["By_pgsm"], mirr["Bz_pgsm"]) == pytest.approx(
+        (-orig["Bx_pgsm"], orig["By_pgsm"], orig["Bz_pgsm"]))
+    assert (mirr["Vx_pgsm"], mirr["Vy_pgsm"], mirr["Vz_pgsm"]) == (10.0, -20.0, -30.0)
+    assert (orig["tilt_pgsm"], mirr["tilt_pgsm"]) == pytest.approx((2.0, -2.0))
+    assert mirr["tilt"] == pytest.approx(math.radians(2.0))  # original column as measured
+
+
+@pytest.mark.parametrize(
+    ("psi_deg", "tilt", "mirrored"),
+    [(12.0, (10.0, 15.0), [False]), (-12.0, (10.0, 15.0), [True]), (2.0, (-5.0, 5.0), [False, True]),
+     (20.0, (10.0, 15.0), [])],
+)
+def test_tilt_selection(psi_deg, tilt, mirrored):
+    out = to_pgsm(msp_frame([POINTS[0]], math.radians(psi_deg)), PgsmSpec(MSP, tilt=tilt))
+    assert sorted(out["mirrored"].to_list()) == mirrored
+
+
+def test_magnetosphere_empty_selection_keeps_output_columns():
+    out = to_pgsm(msp_frame([POINTS[0]], 0.5), PgsmSpec(MSP, tilt=(0.0, 1.0)))
+    assert out.height == 0 and set(OUTPUT_COLUMNS[MSP]) <= set(out.columns)
+
+
+def test_column_info_covers_every_output_column():
+    for region in (MSH, MSP):
+        for c in OUTPUT_COLUMNS[region]:
+            assert set(COLUMN_INFO[c]) == {"unit", "frame", "description"}
