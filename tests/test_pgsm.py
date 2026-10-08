@@ -119,7 +119,9 @@ def spec(cone, clock):
 
 
 def test_folded_cone():
-    df = msh_frame([IMF, (1.0, 0.0, 0.0), (0.0, 0.0, -3.0)])
+    df = pl.DataFrame(
+        {"Bx_imf": [-2.0, 1.0, 0.0], "By_imf": [3.0, 0.0, 0.0], "Bz_imf": [-4.0, 0.0, -3.0]}
+    )
     got = df.select(folded_cone_deg()).to_series().to_list()
     assert got == pytest.approx([F, 0.0, 90.0])
 

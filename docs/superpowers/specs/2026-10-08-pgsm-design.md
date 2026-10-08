@@ -96,8 +96,11 @@ o = sgn(Bx_imf) the original sign (same fallbacks as SWI).
    - s = +1, output cone f: kept if a ≤ f ≤ b;
    - s = −1, output cone 180° − f: kept if a ≤ 180° − f ≤ b.
    A row can give 0, 1 or 2 output rows (2 only if the range contains both f and 180° − f).
-   `mirrored` = (s ≠ o): the output row is a mirror image of the measurement rather than
-   the measurement itself. `bx_sign` = s.
+   `mirrored` = (s ≠ o): the row's IMF Bx sign differs from the measured one (the sample
+   was moved to the other Parker-spiral orientation by symmetry). Rows with s = −1 have
+   positions reflected Y → −Y relative to SWI (eq 2.19), and SWI itself applies B → −B to
+   Bx < 0 measurements, so for those no output row is the bare rotated measurement; the
+   thesis equations are kept as printed. `bx_sign` = s.
 2. Rotation to the target clock (eqs 2.19–2.20), Δ = θ_cl − 90°:
    - Positions, from `X/Y/Z_swi_norm`: X' = X; ρ = √(Y² + Z²), α = atan2(s·Y, Z);
      Y' = ρ sin(α + Δ), Z' = ρ cos(α + Δ) → `X/Y/Z_pgsm_norm`.

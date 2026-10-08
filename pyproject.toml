@@ -139,7 +139,7 @@ reportUnreachable = false
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.params.Depends", "fastapi.params.Query"]
 
 [tool.codespell]
-ignore-words-list = "msh,msp,tha"
+ignore-words-list = "msh,msp,tha,theses"
 skip = "*/_build/*,uv.lock,.git"
 
 [tool.pytest.ini_options]

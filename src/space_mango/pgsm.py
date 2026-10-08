@@ -163,6 +163,10 @@ def _msh_rows(df: pl.DataFrame, sign: int, clock: float) -> pl.DataFrame:
         X_pgsm_norm=pl.col("X_swi_norm"), Y_pgsm_norm=y, Z_pgsm_norm=z,
         Bx_pgsm=s * pl.col("Bx_swi"), By_pgsm=by, Bz_pgsm=bz,
         Vx_pgsm=pl.col("Vx_swi"), Vy_pgsm=vy, Vz_pgsm=vz,
+        # mirrored: the row's IMF Bx sign (bx_sign) differs from the measured sgn(Bx_imf),
+        # i.e. the sample was moved to the other Parker-spiral orientation by symmetry.
+        # Note: SWI already applies B -> -B to Bx < 0 measurements, and bx_sign = -1 rows
+        # have positions reflected Y -> -Y relative to SWI (eq 2.19).
         mirrored=imf_sign() != s,
         bx_sign=pl.lit(sign, dtype=pl.Int8),
     )
