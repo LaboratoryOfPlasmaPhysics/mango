@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3
+
+- **PGSM frame:** `get_data(region, frame="pgsm", ...)` returns magnetosheath data selected
+  by IMF cone angle and rotated to a target IMF clock angle, or magnetosphere data with the
+  dipole-tilt symmetry (Michotte de Welle 2024). `count(..., frame="pgsm")` gives the exact
+  number of rows; it needs the 0.3 server. See the user guide.
+- **Release order:** deploy the 0.3 server before publishing the client, for
+  `count(frame="pgsm")`. `get_data(frame="pgsm")` also works against a 0.2 server.
+
 ## 0.2
 
 The default server URL can be overridden with the `SPACE_MANGO_URL` environment variable
