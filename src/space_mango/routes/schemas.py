@@ -54,3 +54,4 @@ class DatasetDescription(BaseModel):
     citation: str
     doi: str | None
     schema_checksum: str
+    features: list[str] = []
