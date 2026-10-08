@@ -181,11 +181,18 @@ m = mango.get_data("magnetosphere", frame="pgsm", tilt=[10, 15],
 mango.count("magnetosheath", frame="pgsm", cone=[80, 100])   # exact number of output rows
 ```
 
+Range filters (`bz_imf_max`, `y_gsm_min`, ...) and `spacecraft`/`start`/`stop` select on the
+measured values, before the transform: on mirrored or rotated rows they do not act on the PGSM
+quantities.
+
 **Magnetosheath.** Rows are taken in the SWI frame (`*_swi` columns), where the IMF lies in the X–Y plane along +Y (By > 0) and, up to aberration, Bx > 0, so only the cone angle matters.
 - `cone=[min, max]`, degrees: the IMF cone angle acos(Bx_imf/|B_imf|), 0° = IMF pointing
-  sunward. It is measured from X_GSM, while SWI is organized around −V_sw: the two differ by
-  a few degrees (aberration).
-- A row with SWI cone f is kept with IMF Bx > 0 if f is in the range, and with Bx < 0 if
+  sunward. It is measured from X_GSM, while SWI is organized around −V_sw: on the docs
+  sample the angle between −V_sw and X_GSM has a median of 5.4° (99th percentile 13°;
+  aberration accounts for about 4°, flow deflection for the rest), and the cone measured from
+  −V_sw differs from the GSM cone by a median of 2.6° (90th percentile 7.4°, max 14°); narrow
+  cone bins near 0° are the most affected.
+- A row with folded cone f = acos(|Bx_imf|/|B_imf|) is kept with IMF Bx > 0 if f is in the range, and with Bx < 0 if
   180° − f is (the Y mirror of eqs 2.19–2.20). A range containing both gives two rows. Rows with `bx_sign = −1` have their positions reflected Y → −Y relative to SWI (eq 2.19).
 - `clock`, degrees: the target IMF clock angle atan2(By, Bz) (0° = northward). Every
   selected row is rotated about X to it (eqs 2.19–2.20). Changing `clock` only re-runs the
@@ -198,8 +205,12 @@ twice. The plain `tilt_min`/`tilt_max` filter (radians, no symmetry) cannot be c
 with `frame="pgsm"`.
 
 **Output.** Every requested column as measured (also on mirrored rows), plus
-`X/Y/Z_pgsm_norm`, `Bx/By/Bz_pgsm`, `Vx/Vy/Vz_pgsm`, `mirrored` (true when the row was produced by a PGSM symmetry: in the magnetosheath, its IMF Bx sign differs from the measured one; in the magnetosphere, it is the tilt mirror), `bx_sign` (magnetosheath) and `tilt_pgsm` (magnetosphere,
-degrees). Only normalized rows are returned (`normalized_only`; in the magnetosheath also
+`X/Y/Z_pgsm_norm`, `Bx/By/Bz_pgsm`, `Vx/Vy/Vz_pgsm`, `mirrored` (magnetosheath: true when the row's IMF Bx sign, `bx_sign`, differs from the
+measured sgn(Bx_imf); magnetosphere: true for the tilt mirror ψ → −ψ). Because SWI already
+applies B → −B to samples measured with Bx_imf < 0, no magnetosheath PGSM row is the bare
+measurement for those samples: `~mirrored` does not select unsymmetrized data. Also
+`bx_sign` (magnetosheath) and `tilt_pgsm` (magnetosphere, degrees: the row's tilt, ψ as
+measured or −ψ on mirrored rows; note the served `tilt` column is in radians). Only normalized rows are returned (`normalized_only`; in the magnetosheath also
 `sw_paired_only`). `limit` applies to the rows fetched, before the transform. Counts with
 `frame="pgsm"` need a server running space-mango ≥ 0.3.
 

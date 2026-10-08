@@ -151,3 +151,8 @@ def test_query_records_the_request_not_the_fetch(pc):
     assert r.query["columns"] == ["Time", "Np"]
     assert r.query["pd_sw_max"] == 10.0
     assert r.query["prefilter"] == {}
+
+
+def test_requesting_an_output_column_does_not_fail(pc):
+    r = pc.get_data(MSH, frame="pgsm", cone=[0, 180], clock=0, columns=["Time", "Bx_pgsm"])
+    assert r.columns == ["Time", *OUTPUT_COLUMNS[MSH]]

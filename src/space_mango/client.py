@@ -209,7 +209,14 @@ def _pgsm_fetch_args(
     fetch = (
         None
         if columns is None
-        else list(dict.fromkeys([*columns, *PGSM_REQUIRED_COLUMNS[spec.region]]))
+        else list(
+            dict.fromkeys(
+                [
+                    *(c for c in columns if c not in PGSM_OUTPUT_COLUMNS[spec.region]),
+                    *PGSM_REQUIRED_COLUMNS[spec.region],
+                ]
+            )
+        )
     )
     extra: dict[str, object] = dict(filters)
     if spec.tilt is not None:
@@ -824,7 +831,10 @@ class MangoClient:
         except QueryError as e:
             raise error_from_query(e) from None
         if columns is not None:
-            df = df.select([*columns, *PGSM_OUTPUT_COLUMNS[spec.region]])
+            outs = PGSM_OUTPUT_COLUMNS[spec.region]
+            df = df.select(
+                [*dict.fromkeys(c for c in columns if c not in outs), *outs]
+            )
         prefilter = {k: v for k, v in extra.items() if k not in filters}
         query = {
             **{k: v for k, v in res.query.items() if k not in prefilter},

@@ -130,7 +130,8 @@ Input rows: `Norma_pos` true. ψ = `tilt` in degrees.
 - `X/Y/Z_pgsm_norm`, `Bx/By/Bz_pgsm`, `Vx/Vy/Vz_pgsm`, `mirrored`;
   `bx_sign` (magnetosheath); `tilt_pgsm` (magnetosphere).
 - No raw (non-normalized) PGSM positions; no PGSM IMF/solar-wind vectors.
-- `MangoResult.metadata` records frame, parameters, and the thesis reference.
+- `MangoResult.query` records frame, cone, clock, tilt, reference (and an injected
+  `prefilter`); `metadata` covers the `*_pgsm` columns.
 
 ## 6. Where things run
 
@@ -141,8 +142,9 @@ Input rows: `Norma_pos` true. ψ = `tilt` in degrees.
   `tilt` in ±max(|t1|, |t2|) (radians); magnetosheath `normalized_only`, `sw_paired_only`.
 - `count(frame="pgsm", ...)`: the selection expressions (cone candidates, tilt candidates)
   live in `pgsm.py` and are used by `filtering.py`, so the cache path and the server count
-  the same rows. The server `/count` endpoint accepts `frame`, `cone_min`, `cone_max`,
-  `tilt_min`/`tilt_max` with `frame=pgsm`. This is the only server change.
+  the same rows. The server `/count` endpoint accepts `frame=pgsm` with `pgsm_cone_min`/`pgsm_cone_max`,
+  `pgsm_tilt_min`/`pgsm_tilt_max` (implemented in `dataset.py` via `pgsm.candidates`;
+  `PGSM_COUNT_PARAMS` in `filtering.py`). This is the only server change.
 - Not in this version: server-side PGSM on `/data`, CORS.
 - Compatibility: `get_data(frame="pgsm")` works against a 0.2 server. `count(frame="pgsm")`
   needs the new server; against an older one the client raises `ServerError` with an

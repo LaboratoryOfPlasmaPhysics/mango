@@ -50,7 +50,7 @@ COLUMN_INFO: dict[str, dict[str, str]] = {
     **{f"B{c}_pgsm": _info("nT", f"Local magnetic field in PGSM, {c.upper()}") for c in "xyz"},
     **{f"V{c}_pgsm": _info("km/s", f"Local ion velocity in PGSM, {c.upper()}") for c in "xyz"},
     "mirrored": {"unit": "", "frame": "", "description":
-                 "True when the row was produced by a PGSM symmetry (magnetosheath: IMF Bx sign differs from the measured one; magnetosphere: tilt mirror psi -> -psi)"},
+                 "magnetosheath: IMF Bx sign of the row (bx_sign) differs from the measured sgn(Bx_imf); magnetosphere: tilt mirror psi -> -psi"},
     "bx_sign": {"unit": "", "frame": "", "description":
                 "Sign of IMF Bx given to the row in PGSM (+1 or -1)"},
     "tilt_pgsm": {"unit": "deg", "frame": "", "description":
