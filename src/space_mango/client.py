@@ -50,7 +50,7 @@ from space_mango.frames import (
 )
 from space_mango.frames import (
     THESIS,
-    PgsmSpec,
+    FrameSpec,
     make_spec,
     to_pgsm,
 )
@@ -186,7 +186,7 @@ def _pgsm_spec(
     tilt: object,
     *,
     require_clock: bool = True,
-) -> PgsmSpec | None:
+) -> FrameSpec | None:
     try:
         return make_spec(region, frame, cone, clock, tilt, require_clock=require_clock)  # pyright: ignore[reportArgumentType]
     except QueryError as e:
@@ -194,7 +194,7 @@ def _pgsm_spec(
 
 
 def _pgsm_fetch_args(
-    spec: PgsmSpec,
+    spec: FrameSpec,
     columns: list[str] | None,
     filters: Mapping[str, object],
 ) -> tuple[list[str] | None, dict[str, object]]:
@@ -225,7 +225,7 @@ def _pgsm_fetch_args(
     return fetch, extra
 
 
-def _frame_count_params(spec: PgsmSpec) -> dict[str, object]:
+def _frame_count_params(spec: FrameSpec) -> dict[str, object]:
     params: dict[str, object] = {"frame": "pgsm"}
     if spec.cone is not None:
         params |= {"cone_min": str(spec.cone[0]), "cone_max": str(spec.cone[1])}
@@ -496,6 +496,8 @@ class MangoClient:
         if frame is not None or cone is not None or clock is not None or tilt is not None:
             self._check_region(region)
             spec = _pgsm_spec(region, frame, cone, clock, tilt)
+            if spec is not None and spec.frame != "pgsm":
+                raise FrameError("frame/cone/clock/tilt without frame='pgsm' is not available yet.")
             if spec is not None:
                 return self._get_data_pgsm(
                     spec,
@@ -798,7 +800,7 @@ class MangoClient:
 
     def _get_data_pgsm(
         self,
-        spec: PgsmSpec,
+        spec: FrameSpec,
         columns: list[str] | None,
         *,
         spacecraft: Names,
@@ -879,6 +881,8 @@ class MangoClient:
         if frame is not None or cone is not None or clock is not None or tilt is not None:
             self._check_region(region)
             spec = _pgsm_spec(region, frame, cone, clock, tilt, require_clock=False)
+            if spec is not None and spec.frame != "pgsm":
+                raise FrameError("frame/cone/clock/tilt without frame='pgsm' is not available yet.")
         if spec is not None:
             if "frames" not in self.dataset_info().get("features", []):
                 raise ServerError(

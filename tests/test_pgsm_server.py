@@ -14,9 +14,9 @@ def pgsm_api(make_row, make_dataset, make_api):
         # make_row defaults every float to 1.0 and every flag to True:
         # IMF (1, 1, 1), folded cone acos(1/sqrt 3) = 54.7 deg.
         msh: [
-            make_row(msh, "THA", datetime(2016, 1, 1, 0, 0, 0)),
-            make_row(msh, "THA", datetime(2016, 1, 1, 0, 0, 5), Bx_imf=0.0, By_imf=0.0, Bz_imf=2.0),
-            make_row(msh, "THA", datetime(2016, 1, 1, 0, 0, 10), Norma_pos=False),
+            make_row(msh, "THA", datetime(2016, 1, 1, 0, 0, 0), Vx_sw=-400.0, Vy_sw=0.0, Vz_sw=0.0),
+            make_row(msh, "THA", datetime(2016, 1, 1, 0, 0, 5), Vx_sw=-400.0, Vy_sw=0.0, Vz_sw=0.0, Bx_imf=0.0, By_imf=0.0, Bz_imf=2.0),
+            make_row(msh, "THA", datetime(2016, 1, 1, 0, 0, 10), Vx_sw=-400.0, Vy_sw=0.0, Vz_sw=0.0, Norma_pos=False),
         ],
         msp: [
             make_row(msp, "THA", datetime(2016, 1, 1, 0, 0, 0), tilt=math.radians(2.0)),

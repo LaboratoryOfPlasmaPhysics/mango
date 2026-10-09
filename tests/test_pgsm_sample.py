@@ -7,7 +7,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from space_mango.frames import PgsmSpec, imf_sign, to_pgsm
+from space_mango.frames import FrameSpec, imf_sign, to_pgsm
 
 DATA = Path(__file__).resolve().parent.parent / "docs" / "data"
 
@@ -19,7 +19,10 @@ def msh() -> pl.DataFrame:
 
 
 def test_clock_90_reproduces_served_swi(msh):
-    out = to_pgsm(msh, PgsmSpec("magnetosheath", cone=(0.0, 89.999), clock=90.0))
+    out = to_pgsm(msh, FrameSpec("magnetosheath", "pgsm", cone=(0.0, 89.999), clock=90.0))
+    # With the cone measured from -V_sw, aberration puts ~3% of rows above 90 deg; they come
+    # out as bx_sign = -1 (Y-mirrored) rows by construction, so compare the bx_sign = +1 rows.
+    out = out.filter(pl.col("bx_sign") == 1)
     assert out.height > 1000
     for pgsm, swi in [("Bx_pgsm", "Bx_swi"), ("By_pgsm", "By_swi"), ("Bz_pgsm", "Bz_swi"),
                       ("Y_pgsm_norm", "Y_swi_norm"), ("Vz_pgsm", "Vz_swi")]:

@@ -14,7 +14,7 @@ from space_mango.filtering import (
     build_filter_exprs,
     parse_range_params,
 )
-from space_mango.frames import OUTPUT_COLUMNS, PgsmSpec, candidates
+from space_mango.frames import OUTPUT_COLUMNS, FrameSpec, candidates
 from space_mango.models import Region, columns_for, filters_for
 
 _DEFAULT_DATA_DIR = Path("/data/mango")
@@ -168,7 +168,7 @@ class MangoDataset:
         stop_inclusive: bool = False,
         sw_paired_only: bool = False,
         normalized_only: bool = False,
-        pgsm: PgsmSpec | None = None,
+        pgsm: FrameSpec | None = None,
     ) -> tuple[int, int]:
         """Rows and estimated bytes of the matching /data request. With pgsm: the rows the
         client's PGSM transform would output (a row selected twice counts twice)."""

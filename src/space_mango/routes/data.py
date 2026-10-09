@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 
 from space_mango.dataset import MangoDataset, get_dataset
+from space_mango.errors import QueryError
 from space_mango.filtering import time_window
 from space_mango.frames import make_spec
 from space_mango.models import (
@@ -128,6 +129,8 @@ def region_count(
     cone = None if cone_min is None and cone_max is None else (cone_min, cone_max)
     tilt = None if tilt_deg_min is None and tilt_deg_max is None else (tilt_deg_min, tilt_deg_max)
     pgsm = make_spec(region.value, frame, cone=cone, tilt=tilt, require_clock=False)  # pyright: ignore[reportArgumentType]
+    if pgsm is not None and pgsm.frame != "pgsm":
+        raise QueryError("bad_frame", "frame/cone/clock/tilt without frame=pgsm are not available yet.")
     n_rows, est_bytes = ds.count(
         region,
         dict(request.query_params),

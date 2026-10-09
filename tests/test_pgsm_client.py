@@ -18,10 +18,10 @@ MSH, MSP = "magnetosheath", "magnetosphere"
 def pgsm_dir(make_row, make_dataset):
     return make_dataset({
         MSH: [
-            make_row(MSH, "THA", datetime(2016, 1, 1, 0, 0, 0)),  # IMF (1,1,1): f = 54.7 deg
-            make_row(MSH, "THA", datetime(2016, 1, 1, 0, 0, 5), Bx_imf=-2.0, By_imf=3.0,
+            make_row(MSH, "THA", datetime(2016, 1, 1, 0, 0, 0), Vx_sw=-400.0, Vy_sw=0.0, Vz_sw=0.0),  # IMF (1,1,1): f = 54.7 deg
+            make_row(MSH, "THA", datetime(2016, 1, 1, 0, 0, 5), Vx_sw=-400.0, Vy_sw=0.0, Vz_sw=0.0, Bx_imf=-2.0, By_imf=3.0,
                      Bz_imf=-4.0),  # f = 68.2 deg, original Bx < 0
-            make_row(MSH, "THA", datetime(2016, 1, 1, 0, 0, 10), SW_pairing=False),
+            make_row(MSH, "THA", datetime(2016, 1, 1, 0, 0, 10), Vx_sw=-400.0, Vy_sw=0.0, Vz_sw=0.0, SW_pairing=False),
         ],
         MSP: [
             make_row(MSP, "THA", datetime(2016, 1, 1, 0, 0, 0), tilt=math.radians(8.0)),
