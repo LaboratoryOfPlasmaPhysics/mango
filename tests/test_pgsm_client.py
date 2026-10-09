@@ -8,8 +8,8 @@ import pytest
 
 from space_mango._regions_generated import MagnetosheathAPI, MagnetosphereAPI
 from space_mango.client import MangoClient
-from space_mango.errors import PgsmError, ServerError
-from space_mango.pgsm import OUTPUT_COLUMNS
+from space_mango.errors import FrameError, ServerError
+from space_mango.frames import OUTPUT_COLUMNS
 
 MSH, MSP = "magnetosheath", "magnetosphere"
 
@@ -18,10 +18,10 @@ MSH, MSP = "magnetosheath", "magnetosphere"
 def pgsm_dir(make_row, make_dataset):
     return make_dataset({
         MSH: [
-            make_row(MSH, "THA", datetime(2016, 1, 1, 0, 0, 0)),  # IMF (1,1,1): f = 54.7 deg
-            make_row(MSH, "THA", datetime(2016, 1, 1, 0, 0, 5), Bx_imf=-2.0, By_imf=3.0,
+            make_row(MSH, "THA", datetime(2016, 1, 1, 0, 0, 0), Vx_sw=-400.0, Vy_sw=0.0, Vz_sw=0.0),  # IMF (1,1,1): f = 54.7 deg
+            make_row(MSH, "THA", datetime(2016, 1, 1, 0, 0, 5), Vx_sw=-400.0, Vy_sw=0.0, Vz_sw=0.0, Bx_imf=-2.0, By_imf=3.0,
                      Bz_imf=-4.0),  # f = 68.2 deg, original Bx < 0
-            make_row(MSH, "THA", datetime(2016, 1, 1, 0, 0, 10), SW_pairing=False),
+            make_row(MSH, "THA", datetime(2016, 1, 1, 0, 0, 10), Vx_sw=-400.0, Vy_sw=0.0, Vz_sw=0.0, SW_pairing=False),
         ],
         MSP: [
             make_row(MSP, "THA", datetime(2016, 1, 1, 0, 0, 0), tilt=math.radians(8.0)),
@@ -97,7 +97,6 @@ def test_new_clock_reuses_the_cache(pgsm_dir, make_api, tmp_path):
         (MSP, {"frame": "pgsm", "cone": [0, 90], "clock": 0}),
         (MSH, {"frame": "pgsm", "tilt": [0, 5]}),
         ("solar_wind", {"frame": "pgsm"}),
-        (MSH, {"cone": [0, 90]}),
         (MSP, {"frame": "pgsm", "tilt": [0, 5], "tilt_min": 0.0}),
     ],
 )
@@ -111,7 +110,7 @@ def test_errors_before_any_data_request(pgsm_dir, make_api, tmp_path, region, kw
             return inner.handle_request(request)
 
     c = MangoClient("http://testserver", transport=Counting(), cache_dir=tmp_path / "c")
-    with pytest.raises(PgsmError):
+    with pytest.raises(FrameError):
         c.get_data(region, **kwargs)
     assert not [p for p in calls if p.endswith("/data")]
 

@@ -37,5 +37,5 @@ def dataset_info(request: Request, ds: MangoDataset = Depends(get_dataset)) -> D
         citation=citation_bibtex(version, None),
         doi=None,
         schema_checksum=ds.schema_checksum(),
-        features=["pgsm_count"],
+        features=["frames"],
     )

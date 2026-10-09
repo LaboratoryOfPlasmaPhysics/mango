@@ -2,12 +2,13 @@
 
 ## 0.3
 
-- **PGSM frame:** `get_data(region, frame="pgsm", ...)` returns magnetosheath data selected
-  by IMF cone angle and rotated to a target IMF clock angle, or magnetosphere data with the
-  dipole-tilt symmetry (Michotte de Welle 2024). `count(..., frame="pgsm")` gives the exact
-  number of rows; it needs the 0.3 server. See the user guide.
+- **Frames:** `frame="gsm"`, `"swi"` (magnetosheath) or `"pgsm"` choose the returned vector
+  columns; `cone`, `clock` and `tilt` select samples (GSM ranges; in SWI/PGSM the cone is
+  measured from −V_sw); PGSM rotates magnetosheath data to a target clock angle or applies
+  the dipole-tilt symmetry (Michotte de Welle 2024). Without `frame`, results are unchanged.
 - **Release order:** deploy the 0.3 server before publishing the client, for
-  `count(frame="pgsm")`. `get_data(frame="pgsm")` also works against a 0.2 server.
+  `count(...)` with a frame or selection. `get_data` with a frame also works against a 0.2
+  server.
 
 ## 0.2
 

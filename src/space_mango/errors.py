@@ -57,8 +57,8 @@ class CacheMissError(MangoError):
     pass
 
 
-class PgsmError(MangoError, ValueError):
-    """A misused PGSM parameter (frame, cone, clock, tilt)."""
+class FrameError(MangoError, ValueError):
+    """A misused frame parameter (frame, cone, clock, tilt)."""
 
 
 _CODE_TO_ERROR: dict[str, type[MangoError]] = {
@@ -70,7 +70,7 @@ _CODE_TO_ERROR: dict[str, type[MangoError]] = {
     "filter_column_missing": MangoFilterError,
     "flag_unavailable": MangoFilterError,
     "bad_time": TimeParseError,
-    "bad_pgsm": PgsmError,
+    "bad_frame": FrameError,
 }
 
 

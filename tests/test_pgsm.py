@@ -4,14 +4,14 @@ import numpy as np
 import polars as pl
 import pytest
 
-from space_mango.errors import MangoError, PgsmError, QueryError, error_from_query
-from space_mango.pgsm import (
+from space_mango.errors import FrameError, MangoError, QueryError, error_from_query
+from space_mango.frames import (
     COLUMN_INFO,
     OUTPUT_COLUMNS,
-    PgsmSpec,
+    FrameSpec,
     candidates,
-    folded_cone_deg,
     make_spec,
+    swi_cone_deg,
     to_pgsm,
 )
 
@@ -21,27 +21,26 @@ def test_no_frame_no_spec():
 
 
 def test_magnetosheath_spec():
-    assert make_spec("magnetosheath", "pgsm", cone=[80, 100], clock=180) == PgsmSpec(
-        "magnetosheath", cone=(80.0, 100.0), clock=180.0
+    assert make_spec("magnetosheath", "pgsm", cone=[80, 100], clock=180) == FrameSpec(
+        "magnetosheath", "pgsm", cone=(80.0, 100.0), clock=180.0
     )
 
 
 def test_magnetosphere_spec():
-    assert make_spec("magnetosphere", "pgsm", tilt=(-5, 5)) == PgsmSpec(
-        "magnetosphere", tilt=(-5.0, 5.0)
+    assert make_spec("magnetosphere", "pgsm", tilt=(-5, 5)) == FrameSpec(
+        "magnetosphere", "pgsm", tilt=(-5.0, 5.0)
     )
 
 
 def test_count_may_omit_clock():
     spec = make_spec("magnetosheath", "pgsm", cone=[0, 90], require_clock=False)
-    assert spec == PgsmSpec("magnetosheath", cone=(0.0, 90.0))
+    assert spec == FrameSpec("magnetosheath", "pgsm", cone=(0.0, 90.0))
 
 
 @pytest.mark.parametrize(
     ("region", "kwargs", "message"),
     [
-        ("magnetosheath", {"cone": [0, 90]}, "need frame='pgsm'"),
-        ("magnetosphere", {"frame": "gsm", "tilt": [0, 5]}, "not supported"),
+        ("magnetosphere", {"frame": "sm", "tilt": [0, 5]}, "not a frame"),
         ("solar_wind", {"frame": "pgsm"}, "not defined for region 'solar_wind'"),
         ("magnetosheath", {"frame": "pgsm", "cone": [0, 90]}, "needs cone"),
         ("magnetosheath", {"frame": "pgsm", "clock": 0}, "needs cone"),
@@ -51,24 +50,24 @@ def test_count_may_omit_clock():
          "do not apply to the magnetosphere"),
         ("magnetosphere", {"frame": "pgsm"}, "needs tilt"),
         ("magnetosheath", {"frame": "pgsm", "cone": [100, 80], "clock": 0}, "min <= max"),
-        ("magnetosheath", {"frame": "pgsm", "cone": [-1, 80], "clock": 0}, "0 <= min"),
-        ("magnetosheath", {"frame": "pgsm", "cone": [0, 181], "clock": 0}, "<= 180"),
+        ("magnetosheath", {"frame": "pgsm", "cone": [-1, 80], "clock": 0}, "must lie in"),
+        ("magnetosheath", {"frame": "pgsm", "cone": [0, 181], "clock": 0}, "must lie in"),
         ("magnetosheath", {"frame": "pgsm", "cone": [0], "clock": 0}, "[min, max]"),
         ("magnetosheath", {"frame": "pgsm", "cone": "0,90", "clock": 0}, "[min, max]"),
         ("magnetosheath", {"frame": "pgsm", "cone": [0, 90], "clock": float("nan")}, "clock"),
         ("magnetosheath", {"frame": "pgsm", "cone": [0, 90], "clock": 400}, "clock"),
-        ("magnetosphere", {"frame": "pgsm", "tilt": [-40, 0]}, "-35 <= min"),
+        ("magnetosphere", {"frame": "pgsm", "tilt": [-40, 0]}, "must lie in"),
     ],
 )
 def test_bad_parameters(region, kwargs, message):
     with pytest.raises(QueryError, match=message) as info:
         make_spec(region, **{"frame": None, **kwargs})  # pyright: ignore[reportArgumentType]
-    assert info.value.code == "bad_pgsm"
+    assert info.value.code == "bad_frame"
 
 
-def test_bad_pgsm_maps_to_pgsm_error():
-    err = error_from_query(QueryError("bad_pgsm", "x"))
-    assert isinstance(err, PgsmError) and isinstance(err, MangoError)
+def test_bad_frame_maps_to_frame_error():
+    err = error_from_query(QueryError("bad_frame", "x"))
+    assert isinstance(err, FrameError) and isinstance(err, MangoError)
 
 
 MSH = "magnetosheath"
@@ -100,6 +99,7 @@ def msh_frame(b_imf_list, *, b=None, v=(-200.0, 50.0, 20.0), r=(10.0, 3.0, 4.0),
             "Vx_swi": vs[0], "Vy_swi": vs[1], "Vz_swi": vs[2],
             "X_swi_norm": rs[0], "Y_swi_norm": rs[1], "Z_swi_norm": rs[2],
             "Np": 10.0,
+            "Vx_sw": v_sw[0], "Vy_sw": v_sw[1], "Vz_sw": v_sw[2],
         })
     return pl.DataFrame(rows)
 
@@ -116,14 +116,15 @@ F = math.degrees(math.acos(2 / math.sqrt(29)))
 
 
 def spec(cone, clock):
-    return PgsmSpec(MSH, cone=cone, clock=clock)
+    return FrameSpec(MSH, "pgsm", cone=cone, clock=clock)
 
 
-def test_folded_cone():
+def test_swi_cone_along_x_equals_folded_cone():
     df = pl.DataFrame(
-        {"Bx_imf": [-2.0, 1.0, 0.0], "By_imf": [3.0, 0.0, 0.0], "Bz_imf": [-4.0, 0.0, -3.0]}
+        {"Bx_imf": [-2.0, 1.0, 0.0], "By_imf": [3.0, 0.0, 0.0], "Bz_imf": [-4.0, 0.0, -3.0],
+         "Vx_sw": [-400.0] * 3, "Vy_sw": [0.0] * 3, "Vz_sw": [0.0] * 3}
     )
-    got = df.select(folded_cone_deg()).to_series().to_list()
+    got = df.select(swi_cone_deg()).to_series().to_list()
     assert got == pytest.approx([F, 0.0, 90.0])
 
 
@@ -138,6 +139,17 @@ def test_imf_lands_at_target_clock_and_cone(clock):
         # compare angles modulo 360 (0 and 359.9999999 are the same clock)
         assert math.cos(math.radians(got_clock - clock)) == pytest.approx(1.0, abs=1e-12)
         assert got_cone == pytest.approx(cone)
+
+
+def test_cone_axis_is_minus_v_sw():
+    df = msh_frame([IMF], v_sw=(-400.0, 60.0, -30.0))
+    swi_cone = df.select(swi_cone_deg()).item()
+    assert abs(swi_cone - F) > 1.0  # would catch a regression to the X_GSM axis
+    out = to_pgsm(df, spec((0.0, 180.0), 137.0))
+    assert out.height == 2
+    for sign, cone in [(1, swi_cone), (-1, 180.0 - swi_cone)]:
+        row = out.filter(pl.col("bx_sign") == sign).row(0, named=True)
+        assert clock_cone(row)[1] == pytest.approx(cone)
 
 
 def test_original_bx_sign_is_not_mirrored():
@@ -268,7 +280,7 @@ POINTS = [(5.0, 2.0, 3.0), (-3.0, -4.0, 6.0), (8.0, 0.5, -2.0)]
 
 def test_tilt_mirror_maps_dipole_at_psi_to_dipole_at_minus_psi():
     psi = math.radians(24.0)
-    out = to_pgsm(msp_frame(POINTS, psi), PgsmSpec(MSP, tilt=(-25.0, -23.0)))
+    out = to_pgsm(msp_frame(POINTS, psi), FrameSpec(MSP, "pgsm", tilt=(-25.0, -23.0)))
     assert out.height == len(POINTS) and out["mirrored"].all()
     for row in out.iter_rows(named=True):
         r = (row["X_pgsm_norm"], row["Y_pgsm_norm"], row["Z_pgsm_norm"])
@@ -279,7 +291,7 @@ def test_tilt_mirror_maps_dipole_at_psi_to_dipole_at_minus_psi():
 
 def test_mirror_vectors_and_originals():
     df = msp_frame([POINTS[0]], math.radians(2.0))
-    out = to_pgsm(df, PgsmSpec(MSP, tilt=(-5.0, 5.0)))
+    out = to_pgsm(df, FrameSpec(MSP, "pgsm", tilt=(-5.0, 5.0)))
     orig = out.filter(~pl.col("mirrored")).row(0, named=True)
     mirr = out.filter(pl.col("mirrored")).row(0, named=True)
     assert (orig["X_pgsm_norm"], orig["Y_pgsm_norm"], orig["Z_pgsm_norm"]) == POINTS[0]
@@ -297,12 +309,12 @@ def test_mirror_vectors_and_originals():
      (20.0, (10.0, 15.0), [])],
 )
 def test_tilt_selection(psi_deg, tilt, mirrored):
-    out = to_pgsm(msp_frame([POINTS[0]], math.radians(psi_deg)), PgsmSpec(MSP, tilt=tilt))
+    out = to_pgsm(msp_frame([POINTS[0]], math.radians(psi_deg)), FrameSpec(MSP, "pgsm", tilt=tilt))
     assert sorted(out["mirrored"].to_list()) == mirrored
 
 
 def test_magnetosphere_empty_selection_keeps_output_columns():
-    out = to_pgsm(msp_frame([POINTS[0]], 0.5), PgsmSpec(MSP, tilt=(0.0, 1.0)))
+    out = to_pgsm(msp_frame([POINTS[0]], 0.5), FrameSpec(MSP, "pgsm", tilt=(0.0, 1.0)))
     assert out.height == 0 and set(OUTPUT_COLUMNS[MSP]) <= set(out.columns)
 
 
