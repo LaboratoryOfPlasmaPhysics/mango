@@ -30,6 +30,8 @@ class MagnetosphereAPI(RegionAPI):
         limit: int | None = None,
         cache: bool | None = None,
         frame: str | None = None,
+        cone: Sequence[float] | None = None,
+        clock: float | Sequence[float] | None = None,
         tilt: Sequence[float] | None = None,
         bz_imf_min: float | None = None,
         bz_imf_max: float | None = None,
@@ -86,7 +88,8 @@ class MagnetosphereAPI(RegionAPI):
         np_min / np_max : Local plasma density [cm⁻³]
         tp_min / tp_max : Local plasma temperature [K]
         bz_min / bz_max : Local Bz (GSM) [nT]
-        frame='pgsm': PGSM data, tilt=[min, max] in degrees (user guide, PGSM).
+        frame: one of 'gsm', 'pgsm'; see the Frames section of the user guide. cone and
+        clock select on the GSM values, or in SWI/PGSM on the cone measured from -V_sw.
         """
         return self._call("get_data", locals())
 
@@ -100,6 +103,8 @@ class MagnetosphereAPI(RegionAPI):
         sw_paired_only: bool = False,
         normalized_only: bool = False,
         frame: str | None = None,
+        cone: Sequence[float] | None = None,
+        clock: float | Sequence[float] | None = None,
         tilt: Sequence[float] | None = None,
         bz_imf_min: float | None = None,
         bz_imf_max: float | None = None,
@@ -159,7 +164,7 @@ class MagnetosheathAPI(RegionAPI):
         cache: bool | None = None,
         frame: str | None = None,
         cone: Sequence[float] | None = None,
-        clock: float | None = None,
+        clock: float | Sequence[float] | None = None,
         bz_imf_min: float | None = None,
         bz_imf_max: float | None = None,
         by_imf_min: float | None = None,
@@ -212,8 +217,8 @@ class MagnetosheathAPI(RegionAPI):
         np_min / np_max : Local plasma density [cm⁻³]
         tp_min / tp_max : Local plasma temperature [K]
         bz_min / bz_max : Local Bz (GSM) [nT]
-        frame='pgsm': PGSM data, cone=[min, max] (degrees, IMF angle to X_GSM,
-        0 = sunward) and clock=<target degrees> (user guide, PGSM).
+        frame: one of 'gsm', 'swi', 'pgsm'; see the Frames section of the user guide. cone and
+        clock select on the GSM values, or in SWI/PGSM on the cone measured from -V_sw.
         """
         return self._call("get_data", locals())
 
@@ -228,7 +233,7 @@ class MagnetosheathAPI(RegionAPI):
         normalized_only: bool = False,
         frame: str | None = None,
         cone: Sequence[float] | None = None,
-        clock: float | None = None,
+        clock: float | Sequence[float] | None = None,
         bz_imf_min: float | None = None,
         bz_imf_max: float | None = None,
         by_imf_min: float | None = None,
@@ -283,6 +288,7 @@ class SolarWindAPI(RegionAPI):
         normalized_only: bool = False,
         limit: int | None = None,
         cache: bool | None = None,
+        frame: str | None = None,
         x_gsm_min: float | None = None,
         x_gsm_max: float | None = None,
         y_gsm_min: float | None = None,
@@ -305,6 +311,8 @@ class SolarWindAPI(RegionAPI):
         np_min / np_max : Local plasma density [cm⁻³]
         tp_min / tp_max : Local plasma temperature [K]
         bz_min / bz_max : Local Bz (GSM) [nT]
+        frame: one of 'gsm'; see the Frames section of the user guide. cone and
+        clock select on the GSM values, or in SWI/PGSM on the cone measured from -V_sw.
         """
         return self._call("get_data", locals())
 
@@ -317,6 +325,7 @@ class SolarWindAPI(RegionAPI):
         stop: TimeLike = None,
         sw_paired_only: bool = False,
         normalized_only: bool = False,
+        frame: str | None = None,
         x_gsm_min: float | None = None,
         x_gsm_max: float | None = None,
         y_gsm_min: float | None = None,

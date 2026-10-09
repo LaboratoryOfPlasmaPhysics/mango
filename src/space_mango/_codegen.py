@@ -41,29 +41,27 @@ def _filter_params(region: Region) -> list[str]:
     return out
 
 
-def _pgsm_params(region: Region) -> str:
-    if region is Region.magnetosheath:
-        names = [
-            "frame: str | None = None",
+def _frame_params(region: Region) -> str:
+    names = ["frame: str | None = None"]
+    if region in (Region.magnetosheath, Region.magnetosphere):
+        names += [
             "cone: Sequence[float] | None = None",
-            "clock: float | None = None",
+            "clock: float | Sequence[float] | None = None",
         ]
-    elif region is Region.magnetosphere:
-        names = ["frame: str | None = None", "tilt: Sequence[float] | None = None"]
-    else:
-        return ""
+    if region is Region.magnetosphere:
+        names.append("tilt: Sequence[float] | None = None")
     return "".join(f"        {n},\n" for n in names)
 
 
-def _pgsm_doc(region: Region) -> str:
-    if region is Region.magnetosheath:
-        return (
-            "\n        frame='pgsm': PGSM data, cone=[min, max] (degrees, IMF angle to X_GSM,"
-            "\n        0 = sunward) and clock=<target degrees> (user guide, PGSM).\n"
-        )
-    if region is Region.magnetosphere:
-        return "\n        frame='pgsm': PGSM data, tilt=[min, max] in degrees (user guide, PGSM).\n"
-    return "\n"
+def _frame_doc(region: Region) -> str:
+    frames = {
+        Region.magnetosheath: "'gsm', 'swi', 'pgsm'",
+        Region.magnetosphere: "'gsm', 'pgsm'",
+    }.get(region, "'gsm'")
+    return (
+        f"\n        frame: one of {frames}; see the Frames section of the user guide. cone and\n"
+        "        clock select on the GSM values, or in SWI/PGSM on the cone measured from -V_sw.\n"
+    )
 
 
 def _render_class(region: Region) -> str:
@@ -71,8 +69,8 @@ def _render_class(region: Region) -> str:
     doc = "\n".join(_filter_doc(region))
     params = "\n".join(_filter_params(region))
     cls = _class_name(region)
-    pgsm = _pgsm_params(region)
-    pgsm_doc = _pgsm_doc(region)
+    pgsm = _frame_params(region)
+    pgsm_doc = _frame_doc(region)
     return f'''
 
 class {cls}(RegionAPI):

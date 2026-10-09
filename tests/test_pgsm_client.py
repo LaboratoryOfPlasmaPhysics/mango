@@ -97,7 +97,6 @@ def test_new_clock_reuses_the_cache(pgsm_dir, make_api, tmp_path):
         (MSP, {"frame": "pgsm", "cone": [0, 90], "clock": 0}),
         (MSH, {"frame": "pgsm", "tilt": [0, 5]}),
         ("solar_wind", {"frame": "pgsm"}),
-        (MSH, {"cone": [0, 90]}),
         (MSP, {"frame": "pgsm", "tilt": [0, 5], "tilt_min": 0.0}),
     ],
 )
