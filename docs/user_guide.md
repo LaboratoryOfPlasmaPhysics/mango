@@ -226,11 +226,13 @@ A dash means the parameter is refused with a `FrameError`.
 | none | every served column | - |
 | `"gsm"` | `Bx/By/Bz`, `Vx/Vy/Vz`, `X/Y/Z_gsm`, `X/Y/Z_gsm_norm`, `B*_imf`, `V*_sw` | scalars |
 | `"swi"` | `B*_swi`, `V*_swi`, `X/Y/Z_swi_norm` | scalars |
-| `"pgsm"` | `X/Y/Z_pgsm_norm`, `B*_pgsm`, `V*_pgsm`, `mirrored`, `bx_sign` (magnetosheath) / `tilt_pgsm` (magnetosphere) | scalars |
+| `"pgsm"` | `X/Y/Z_pgsm_norm`, `B*_pgsm`, `V*_pgsm`, `mirrored`, `bx_sign` and `cone_pgsm` (magnetosheath) / `tilt_pgsm` (magnetosphere) | scalars |
 
 Scalars (frame-free, returned in every frame where they are served): `Time`, `SC`, `Np`,
 `Tp`, `SW_pairing`, `Norma_pos`, `Np_sw`, `Tp_sw`, `Pd_sw`, `Beta_sw`, `Ma_sw`, `R_mp`,
-`R_bs`, `R_norm`, `tilt`. In SWI and PGSM the GSM IMF and solar-wind vectors are not
+`R_bs`, `R_norm`, `tilt`. With any `frame` (magnetosheath and magnetosphere), two computed
+magnitudes are added: `V_sw` (km/s, |V_sw|) and `B_imf` (nT, |B_imf|), from the served
+components. In SWI and PGSM the GSM IMF and solar-wind vectors themselves are not
 returned. With an explicit `frame`, asking in `columns=` for a column of another frame
 raises a `FrameError` naming the frame it belongs to; without `frame`, every served column
 may be requested.
@@ -297,7 +299,9 @@ measured sgn(Bx_imf); magnetosphere: true for the tilt mirror ψ → −ψ). Bec
 applies B → −B to samples measured with Bx_imf < 0, no magnetosheath PGSM row is the bare
 measurement for those samples: `~mirrored` does not select unsymmetrized data. Also
 `bx_sign` (magnetosheath: the PGSM symmetry sign s, +1 as rotated from SWI, −1 Y-reflected, eq 2.19; it equals the sign of the PGSM IMF Bx except on rows whose SWI cone exceeds 90° (aberration, about 3.5% of rows)) and `tilt_pgsm` (magnetosphere, degrees: the row's tilt, ψ as
-measured or −ψ on mirrored rows; note the served `tilt` column is in radians).
+measured or −ψ on mirrored rows; note the served `tilt` column is in radians). In the
+magnetosheath, `cone_pgsm` (degrees) is the IMF cone of the row in PGSM: f for
+`bx_sign = +1`, 180° − f for `bx_sign = −1`.
 
 ### Server version
 

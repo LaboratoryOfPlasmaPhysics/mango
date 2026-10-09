@@ -171,3 +171,25 @@ def test_frame_error_exported():
     import space_mango as m
 
     assert issubclass(m.FrameError, m.MangoError) and "FrameError" in m.__all__
+
+
+def test_magnitudes_returned_with_a_frame(fc):
+    r = fc.get_data(MSH, frame="swi")
+    assert r["V_sw"].to_list() == pytest.approx([400.0, 400.0])
+    assert sorted(r["B_imf"].to_list()) == pytest.approx([math.sqrt(2.0), 3.0])
+    assert r.metadata["V_sw"]["unit"] == "km/s" and r.metadata["B_imf"]["unit"] == "nT"
+    assert "V_sw" in fc.get_data(MSH, frame="gsm").columns
+    assert "V_sw" in fc.get_data(MSP, frame="pgsm", tilt=[-35, 35]).columns
+    assert "V_sw" not in fc.get_data(MSH).columns  # no frame: 0.2.0 columns
+
+
+def test_magnitudes_on_request(fc):
+    r = fc.get_data(MSH, frame="swi", cone=[0, 90], columns=["Time", "V_sw", "B_imf"])
+    assert r.columns == ["Time", "V_sw", "B_imf"]
+
+
+def test_cone_pgsm_returned(fc):
+    r = fc.get_data(MSH, frame="pgsm", cone=[0, 180], clock=0)
+    assert "cone_pgsm" in r.columns
+    by_sign = dict(zip(r["bx_sign"].to_list(), r["cone_pgsm"].to_list(), strict=False))
+    assert by_sign[1] + by_sign[-1] == pytest.approx(180.0)

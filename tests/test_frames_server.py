@@ -110,3 +110,9 @@ def test_frame_param_messages(frames_api, path, params, message):
     r = frames_api.get(f"/api/v1/regions/{region}/{path}", params=params)
     assert r.status_code == 400
     assert r.json()["detail"]["error"] == "bad_frame" and message in r.json()["detail"]["message"]
+
+
+def test_server_projection_adds_magnitudes(frames_api):
+    df = _data(frames_api, MSH, frame="swi")
+    assert df["V_sw"].to_list() == pytest.approx([400.0, 400.0])
+    assert "B_imf" in df.columns

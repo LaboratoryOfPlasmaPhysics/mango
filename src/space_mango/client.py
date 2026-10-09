@@ -48,6 +48,8 @@ from space_mango.frames import (
 from space_mango.frames import (
     THESIS,
     FrameSpec,
+    derived_exprs,
+    derived_scalars,
     frame_columns,
     frame_of_column,
     implied_flags,
@@ -775,13 +777,15 @@ class MangoClient:
     def _frame_fetch(
         self, spec: FrameSpec, columns: list[str] | None
     ) -> tuple[list[str] | None, list[str], list[str]]:
-        """(columns to fetch, requested served columns, PGSM output columns) for a framed
-        query; shared by get_data and count. Raises FrameError for a column of another frame;
-        other unknown names are left to the server-side/cache validation (did-you-mean)."""
+        """(columns to fetch, columns returned, computed magnitudes to add) for a framed query;
+        shared by get_data and count. Raises FrameError for a column of another frame; other
+        unknown names are left to the server-side/cache validation (did-you-mean)."""
         region = spec.region
         served = [c["name"] for c in self._describe_raw(region)["columns"]]
         allowed = frame_columns(region, spec.frame, served)
         outputs = PGSM_OUTPUT_COLUMNS[region] if spec.frame == "pgsm" else []
+        derived = derived_scalars(region, spec.frame)
+        computed = [*outputs, *derived]
         for c in columns or []:
             other = frame_of_column(c)
             if spec.frame is not None and other and other != spec.frame:
@@ -792,17 +796,17 @@ class MangoClient:
                 )
             if spec.frame != "pgsm" and c in PGSM_OUTPUT_COLUMNS[region]:
                 raise FrameError(f"'{c}' is a PGSM column; it needs frame='pgsm'.")
-        wanted = (
-            [c for c in columns if c not in outputs]
-            if columns is not None
-            else [c for c in allowed if c not in outputs]
-        )
+        wanted = [c for c in (allowed if columns is None else columns) if c not in computed]
         fetch = (
             None
             if columns is None and spec.frame is None
             else list(dict.fromkeys([*wanted, *required_columns(spec)]))
         )
-        return fetch, wanted, outputs
+        returned = (
+            allowed if columns is None
+            else list(dict.fromkeys([*(c for c in columns if c not in outputs), *outputs]))
+        )
+        return fetch, returned, derived
 
     def _get_data_framed(
         self,
@@ -828,7 +832,7 @@ class MangoClient:
                 "tilt_min/tilt_max (radians, plain selection) cannot be combined with "
                 "tilt=[min, max] (degrees)."
             )
-        fetch, wanted, outputs = self._frame_fetch(spec, columns)
+        fetch, returned, derived = self._frame_fetch(spec, columns)
         extra: dict[str, object] = dict(filters)
         if spec.frame == "pgsm" and spec.tilt is not None:
             t = math.radians(max(abs(spec.tilt[0]), abs(spec.tilt[1])))
@@ -856,8 +860,10 @@ class MangoClient:
                 df = df.filter(sel)
         except QueryError as e:
             raise error_from_query(e) from None
+        if derived:
+            df = df.with_columns(derived_exprs())
         if fetch is not None:
-            df = df.select(list(dict.fromkeys([*wanted, *outputs])))
+            df = df.select(returned)
         prefilter = {k: v for k, v in extra.items() if k not in filters}
         query = {
             **{k: v for k, v in res.query.items() if k not in prefilter},
@@ -869,7 +875,7 @@ class MangoClient:
         }
         if spec.frame == "pgsm":
             query |= {"prefilter": prefilter, "reference": THESIS}
-        info = {**res.columns_info, **(PGSM_COLUMN_INFO if spec.frame == "pgsm" else {})}
+        info = {**res.columns_info, **PGSM_COLUMN_INFO}  # metadata keeps only returned columns
         return MangoResult(df, info, res.version, query, res.citation, region)
 
     def count(

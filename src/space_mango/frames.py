@@ -40,9 +40,11 @@ REQUIRED_COLUMNS: dict[str, list[str]] = {
 }
 """Input columns of the PGSM transform, fetched even when not asked for."""
 OUTPUT_COLUMNS: dict[str, list[str]] = {
-    "magnetosheath": [*_POS, *_VEC, "mirrored", "bx_sign"],
+    "magnetosheath": [*_POS, *_VEC, "mirrored", "bx_sign", "cone_pgsm"],
     "magnetosphere": [*_POS, *_VEC, "mirrored", "tilt_pgsm"],
 }
+DERIVED_SCALARS = ["V_sw", "B_imf"]
+"""Frame-free magnitudes computed from the served V*_sw and B*_imf, returned with any frame."""
 
 
 def _info(unit: str, description: str) -> dict[str, str]:
@@ -59,6 +61,12 @@ COLUMN_INFO: dict[str, dict[str, str]] = {
                 "PGSM symmetry sign s (+1: as rotated from SWI; -1: Y-reflected, eq 2.19). It equals the sign of the PGSM IMF Bx except on rows whose SWI cone exceeds 90 deg (aberration, about 3.5% of rows)."},
     "tilt_pgsm": {"unit": "deg", "frame": "", "description":
                   "Dipole tilt of the row in PGSM (negated on mirrored rows)"},
+    "cone_pgsm": _info("deg", "IMF cone angle of the row in PGSM: f (bx_sign = +1) or 180 - f "
+                       "(bx_sign = -1), with f the IMF cone measured from -V_sw"),
+    "V_sw": {"unit": "km/s", "frame": "", "description":
+             "Solar-wind speed |V_sw|, computed from the served Vx_sw, Vy_sw, Vz_sw"},
+    "B_imf": {"unit": "nT", "frame": "", "description":
+              "IMF magnitude |B_imf|, computed from the served Bx_imf, By_imf, Bz_imf"},
 }
 
 
@@ -247,6 +255,8 @@ def required_columns(spec: FrameSpec) -> list[str]:
         cols += _VSW
     if spec.tilt is not None:
         cols.append("tilt")
+    if derived_scalars(spec.region, spec.frame):
+        cols += [*_IMF, *_VSW]
     return list(dict.fromkeys(cols))
 
 
@@ -262,10 +272,24 @@ def frame_columns(region: str, frame: str | None, served: Sequence[str]) -> list
     scalars plus OUTPUT_COLUMNS."""
     if frame is None:
         return list(served)
+    derived = derived_scalars(region, frame)
     scalars = [c for c in served if frame_of_column(c) == ""]
     if frame == "pgsm":
-        return [*scalars, *OUTPUT_COLUMNS[region]]
-    return [c for c in served if frame_of_column(c) in ("", frame)]
+        return [*scalars, *derived, *OUTPUT_COLUMNS[region]]
+    return [*(c for c in served if frame_of_column(c) in ("", frame)), *derived]
+
+
+def derived_scalars(region: str, frame: str | None) -> list[str]:
+    """Computed magnitudes returned with a frame (none without a frame, so the unframed
+    output stays the 0.2.0 one; none for the solar wind, which has no IMF columns)."""
+    paired = region in ("magnetosheath", "magnetosphere")
+    return list(DERIVED_SCALARS) if frame is not None and paired else []
+
+
+def derived_exprs() -> list[pl.Expr]:
+    """|V_sw| and |B_imf| from the served components."""
+    v = (pl.col("Vx_sw") ** 2 + pl.col("Vy_sw") ** 2 + pl.col("Vz_sw") ** 2).sqrt()
+    return [v.alias("V_sw"), _imf_norm().alias("B_imf")]
 
 
 def spec_from_params(
@@ -340,6 +364,7 @@ def _msh_rows(df: pl.DataFrame, sign: int, clock: float) -> pl.DataFrame:
         # have positions reflected Y -> -Y relative to SWI (eq 2.19).
         mirrored=imf_sign() != s,
         bx_sign=pl.lit(sign, dtype=pl.Int8),
+        cone_pgsm=swi_cone_deg() if sign == 1 else 180.0 - swi_cone_deg(),
     )
 
 
