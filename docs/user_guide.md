@@ -165,35 +165,122 @@ All inherit from `MangoError`.
 
 `mango.cite()` (or `result.cite()`) returns BibTeX for the dataset version served.
 
-## PGSM frame
+## Frames
 
-PGSM ("pseudo-GSM", Michotte de Welle 2024, PhD thesis, sections 2.7.3–2.7.4,
-<https://theses.hal.science/tel-04661957>) pools measurements taken under many IMF
-orientations (magnetosheath) or dipole tilts (magnetosphere) by symmetry. The result looks
-like a GSM map for one target IMF orientation or tilt range, with much better coverage.
-Ask for it explicitly with `frame="pgsm"`:
+MANGO data can be asked for in one of three coordinate frames with `frame=`: `"gsm"`,
+`"swi"` (magnetosheath only) or `"pgsm"` (the "pseudo-GSM" of Michotte de Welle 2024, PhD
+thesis, sections 2.7.3–2.7.4, <https://theses.hal.science/tel-04661957>). The frame decides
+which vector columns are returned and how `cone`, `clock` and `tilt` are read. Without
+`frame`, every served column is returned (as in 0.2) and the selections act on the GSM
+values.
 
 ```python
-r = mango.get_data("magnetosheath", frame="pgsm", cone=[80, 100], clock=180,
-                   spacecraft="THA", start="2008-08-01", stop="2008-09-01")
-m = mango.get_data("magnetosphere", frame="pgsm", tilt=[10, 15],
-                   spacecraft="THA", start="2008-08-01", stop="2008-09-01")
+mango.get_data("magnetosheath", cone=[20, 40], clock=[330, 30])             # all columns, GSM selections
+mango.get_data("magnetosphere", frame="gsm", tilt=[10, 15], cone=[0, 30])   # GSM columns only
+mango.get_data("magnetosheath", frame="swi", cone=[20, 40])                 # SWI columns only
+mango.get_data("magnetosheath", frame="pgsm", cone=[80, 100], clock=180,
+               spacecraft="THA", start="2008-08-01", stop="2008-09-01")      # PGSM
+mango.get_data("magnetosphere", frame="pgsm", tilt=[10, 15],
+               spacecraft="THA", start="2008-08-01", stop="2008-09-01")
 mango.count("magnetosheath", frame="pgsm", cone=[80, 100])   # exact number of output rows
 ```
 
-Range filters (`bz_imf_max`, `y_gsm_min`, ...) and `spacecraft`/`start`/`stop` select on the
-measured values, before the transform: on mirrored or rotated rows they do not act on the PGSM
-quantities.
+### Parameters by frame
 
-**Magnetosheath.** Rows are taken in the SWI frame (`*_swi` columns), where the IMF lies in the X–Y plane along +Y (By > 0) and, up to aberration, Bx > 0, so only the cone angle matters.
-- `cone=[min, max]`, degrees: the IMF cone angle acos(Bx_imf/|B_imf|), 0° = IMF pointing
-  sunward. It is measured from X_GSM, while SWI is organized around −V_sw: on the docs
-  sample the angle between −V_sw and X_GSM has a median of 5.4° (99th percentile 13°;
-  aberration accounts for about 4°, flow deflection for the rest), and the cone measured from
-  −V_sw differs from the GSM cone by a median of 2.6° (90th percentile 7.4°, max 14°); narrow
-  cone bins near 0° are the most affected.
-- A row with folded cone f = acos(|Bx_imf|/|B_imf|) is kept with IMF Bx > 0 if f is in the range, and with Bx < 0 if
-  180° − f is (the Y mirror of eqs 2.19–2.20). A range containing both gives two rows. Rows with `bx_sign = −1` have their positions reflected Y → −Y relative to SWI (eq 2.19).
+A dash means the parameter is refused with a `FrameError`.
+
+| frame | region | `cone=[min, max]` | `clock` | `tilt=[min, max]` |
+|---|---|---|---|---|
+| none / `"gsm"` | magnetosheath | GSM cone [0, 180] | range | - |
+| none / `"gsm"` | magnetosphere | GSM cone [0, 180] | range | [−35, 35] |
+| none / `"gsm"` | solar_wind | - (no IMF columns) | - | - |
+| `"swi"` | magnetosheath | SWI cone [0, 180] | - | - |
+| `"swi"` | magnetosphere, solar_wind | frame refused | | |
+| `"pgsm"` | magnetosheath | required, SWI cone [0, 180] | required, one value | - |
+| `"pgsm"` | magnetosphere | - | - | required, with symmetry |
+| `"pgsm"` | solar_wind | frame refused | | |
+
+- All angles are in degrees.
+- A `clock` range `[c1, c2]` takes values in [−360, 360], taken mod 360. If c1 ≤ c2 after
+  that, it selects c1 ≤ clock ≤ c2; otherwise it wraps through north (clock ≥ c1 or
+  clock ≤ c2), so `[330, 30]` and `[-30, 30]` both select the sector around 0°. A range
+  spanning 360° or more selects every row with a defined clock; because bounds are reduced
+  mod 360 first, `[180, -180]` selects only 180°. In GSM `clock` is a range (a single value
+  is an error); in PGSM it is one target value (a range is an error); SWI has no clock.
+- `tilt=[min, max]` is in degrees and applies to the magnetosphere only. The legacy
+  `tilt_min`/`tilt_max` filter (radians, no symmetry) cannot be combined with `tilt=`.
+- Any `cone` or `clock` selection implies `sw_paired_only` (the IMF columns are filled on
+  unpaired rows too, but are not meaningful there). `frame="swi"` and `frame="pgsm"` imply
+  `normalized_only`, and `sw_paired_only` in the magnetosheath.
+- Range filters (`bz_imf_max`, `y_gsm_min`, ...) and `spacecraft`/`start`/`stop` select on
+  the measured values, before any transform: on mirrored or rotated rows they do not act on
+  the PGSM quantities.
+- With a frame or a selection, `limit` applies to the rows fetched, before the selection
+  and the PGSM transform.
+
+### Columns returned
+
+| frame | vector columns | plus |
+|---|---|---|
+| none | every served column | - |
+| `"gsm"` | `Bx/By/Bz`, `Vx/Vy/Vz`, `X/Y/Z_gsm`, `X/Y/Z_gsm_norm`, `B*_imf`, `V*_sw` | scalars |
+| `"swi"` | `B*_swi`, `V*_swi`, `X/Y/Z_swi_norm` | scalars |
+| `"pgsm"` | `X/Y/Z_pgsm_norm`, `B*_pgsm`, `V*_pgsm`, `mirrored`, `bx_sign` (magnetosheath) / `tilt_pgsm` (magnetosphere) | scalars |
+
+Scalars (frame-free, returned in every frame where they are served): `Time`, `SC`, `Np`,
+`Tp`, `SW_pairing`, `Norma_pos`, `Np_sw`, `Tp_sw`, `Pd_sw`, `Beta_sw`, `Ma_sw`, `R_mp`,
+`R_bs`, `R_norm`, `tilt`. In SWI and PGSM the GSM IMF and solar-wind vectors are not
+returned. With an explicit `frame`, asking in `columns=` for a column of another frame
+raises a `FrameError` naming the frame it belongs to; without `frame`, every served column
+may be requested.
+
+### Angle definitions
+
+- **GSM cone** = acos(Bx_imf/|B_imf|) ∈ [0°, 180°], measured from X_GSM; 0° = IMF
+  sunward.
+- **GSM clock** = atan2(By_imf, Bz_imf) ∈ [0°, 360°); 0° = northward, 90° = +Y.
+- **SWI and PGSM cone** = acos(s·B_imf·X̂/|B_imf|), measured from −V_sw: X̂ = −V_sw/|V_sw|
+  and s = sgn(Bx_imf) as in the SWI construction. It is at most 90° except for a few rows
+  where aberration makes the scalar product negative (about 3.5 % of the magnetosheath
+  sample rows), so it can slightly exceed 90°.
+- Rows where an angle is undefined (zero IMF, or zero solar-wind speed for the SWI cone)
+  are never selected.
+
+SWI is organized around −V_sw, not X_GSM: on the docs sample the angle between −V_sw and
+X_GSM has a median of 5.4° (99th percentile 13°; aberration accounts for about 4°, flow
+deflection for the rest), and the cone measured from −V_sw differs from the GSM cone by a
+median of 2.6° (90th percentile 7.4°, max 14°). The same `cone` range therefore selects
+slightly different samples in GSM and in SWI/PGSM; narrow cone bins near 0° are the most
+affected.
+
+### GSM selections
+
+Without a transform, `cone`, `clock` and `tilt` just select rows:
+
+```python
+mango.get_data("magnetosheath", cone=[20, 40])                 # IMF cone between 20 and 40 degrees
+mango.get_data("magnetosheath", clock=[330, 30])               # clock wraps through north
+mango.get_data("magnetosphere", tilt=[10, 15])                 # dipole tilt, degrees
+```
+
+### SWI
+
+Magnetosheath only: the served SWI columns (`*_swi`), where the IMF lies in the X–Y plane
+along +Y (By > 0) and, up to aberration, Bx > 0, so only the cone angle matters. `cone` is
+measured from −V_sw; `clock` is refused.
+
+### PGSM
+
+PGSM pools measurements taken under many IMF orientations (magnetosheath) or dipole tilts
+(magnetosphere) by symmetry. The result looks like a GSM map for one target IMF orientation
+or tilt range, with much better coverage.
+
+**Magnetosheath.** Rows are taken in the SWI frame.
+- `cone=[min, max]`: the SWI cone defined above, measured from −V_sw.
+- A row with SWI cone f is kept with `bx_sign` = +1 if f is in the range, and with
+  `bx_sign` = −1 if 180° − f is (the Y mirror of eqs 2.19–2.20). A range containing both
+  gives two rows. Rows with `bx_sign = −1` have their positions reflected Y → −Y relative
+  to SWI (eq 2.19).
 - `clock`, degrees: the target IMF clock angle atan2(By, Bz) (0° = northward). Every
   selected row is rotated about X to it (eqs 2.19–2.20). Changing `clock` only re-runs the
   local transform; nothing is downloaded again.
@@ -201,8 +288,7 @@ quantities.
 **Magnetosphere.** `tilt=[min, max]`, degrees. A row with dipole tilt ψ is kept as measured
 if ψ is in the range, and its mirror image (eqs 2.14–2.16: positions (X, −Y, −Z),
 B (−Bx, By, Bz), V (Vx, −Vy, −Vz)) is added if −ψ is. A range containing 0 can give a row
-twice. The plain `tilt_min`/`tilt_max` filter (radians, no symmetry) cannot be combined
-with `frame="pgsm"`.
+twice.
 
 **Output.** Every requested column as measured (also on mirrored rows), plus
 `X/Y/Z_pgsm_norm`, `Bx/By/Bz_pgsm`, `Vx/Vy/Vz_pgsm`, `mirrored` (magnetosheath: true when the row's IMF Bx sign, `bx_sign`, differs from the
@@ -210,9 +296,13 @@ measured sgn(Bx_imf); magnetosphere: true for the tilt mirror ψ → −ψ). Bec
 applies B → −B to samples measured with Bx_imf < 0, no magnetosheath PGSM row is the bare
 measurement for those samples: `~mirrored` does not select unsymmetrized data. Also
 `bx_sign` (magnetosheath) and `tilt_pgsm` (magnetosphere, degrees: the row's tilt, ψ as
-measured or −ψ on mirrored rows; note the served `tilt` column is in radians). Only normalized rows are returned (`normalized_only`; in the magnetosheath also
-`sw_paired_only`). `limit` applies to the rows fetched, before the transform. Counts with
-`frame="pgsm"` need a server running space-mango ≥ 0.3.
+measured or −ψ on mirrored rows; note the served `tilt` column is in radians).
+
+### Server version
+
+New in 0.3. `get_data` with a frame or a selection also works against a 0.2 server (the
+selection and projection then run in the client); `count()` with a frame, `cone`, `clock`
+or `tilt` needs a server running space-mango ≥ 0.3.
 
 ## Known caveats
 

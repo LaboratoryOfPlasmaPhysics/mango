@@ -44,5 +44,5 @@
    :members: get_data, count, describe, spacecraft
 
 .. automodule:: space_mango.errors
-   :members: MangoError, UnknownRegionError, UnknownSpacecraftError, UnknownColumnError, MangoFilterError, TimeParseError, ServerError, CacheMissError
+   :members: MangoError, UnknownRegionError, UnknownSpacecraftError, UnknownColumnError, MangoFilterError, FrameError, TimeParseError, ServerError, CacheMissError
 ```
