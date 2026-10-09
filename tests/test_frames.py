@@ -179,8 +179,12 @@ def test_required_columns():
     assert required_columns(FrameSpec(MSH, None, cone=(0.0, 30.0))) == ["Bx_imf", "By_imf", "Bz_imf"]
     assert required_columns(FrameSpec(MSH, "swi", cone=(0.0, 30.0))) == [
         "Bx_imf", "By_imf", "Bz_imf", "Vx_sw", "Vy_sw", "Vz_sw"]
-    assert required_columns(FrameSpec(MSP, "gsm", tilt=(0.0, 5.0))) == ["tilt"]
-    assert required_columns(FrameSpec(MSH, "swi")) == []
+    assert required_columns(FrameSpec(MSP, None, tilt=(0.0, 5.0))) == ["tilt"]
+    # with a frame, the computed magnitudes V_sw and B_imf need the IMF and V_sw columns
+    assert required_columns(FrameSpec(MSP, "gsm", tilt=(0.0, 5.0))) == [
+        "tilt", "Bx_imf", "By_imf", "Bz_imf", "Vx_sw", "Vy_sw", "Vz_sw"]
+    assert required_columns(FrameSpec(MSH, "swi")) == [
+        "Bx_imf", "By_imf", "Bz_imf", "Vx_sw", "Vy_sw", "Vz_sw"]
     assert "Vx_sw" in required_columns(FrameSpec(MSH, "pgsm", cone=(0.0, 30.0), clock=0.0))
 
 
@@ -200,13 +204,14 @@ def test_frame_columns():
     swi = frame_columns(MSH, "swi", MSH_SERVED)
     assert [c for c in swi if c not in SCALARS] == [
         "Bx_swi", "By_swi", "Bz_swi", "Vx_swi", "Vy_swi", "Vz_swi",
-        "X_swi_norm", "Y_swi_norm", "Z_swi_norm"]
+        "X_swi_norm", "Y_swi_norm", "Z_swi_norm", "V_sw", "B_imf"]
     gsm = frame_columns(MSH, "gsm", MSH_SERVED)
     assert not [c for c in gsm if "swi" in c] and "Bx_imf" in gsm and "X_gsm_norm" in gsm
     assert [c for c in swi if c in SCALARS] == SCALARS  # served order kept
     pgsm = frame_columns(MSH, "pgsm", MSH_SERVED)
-    assert pgsm[-11:] == ["X_pgsm_norm", "Y_pgsm_norm", "Z_pgsm_norm", "Bx_pgsm", "By_pgsm",
-                          "Bz_pgsm", "Vx_pgsm", "Vy_pgsm", "Vz_pgsm", "mirrored", "bx_sign"]
+    assert pgsm[-14:] == ["V_sw", "B_imf", "X_pgsm_norm", "Y_pgsm_norm", "Z_pgsm_norm",
+                          "Bx_pgsm", "By_pgsm", "Bz_pgsm", "Vx_pgsm", "Vy_pgsm", "Vz_pgsm",
+                          "mirrored", "bx_sign", "cone_pgsm"]
 
 
 # ---- server parameters -----------------------------------------------------------------
@@ -265,3 +270,25 @@ def test_numpy_scalar_clock():
     assert spec is not None and spec.clock == 180.0
     with pytest.raises(QueryError, match="clock in GSM is a range"):
         make_spec(MSH, None, clock=np.float64(30))
+
+
+# ---- computed scalars (V_sw, B_imf) and cone_pgsm --------------------------------------
+
+def test_frame_columns_add_computed_magnitudes():
+    from space_mango.frames import derived_scalars
+
+    assert derived_scalars(MSH, None) == []
+    assert derived_scalars(SW, "gsm") == []
+    for frame in ("gsm", "swi", "pgsm"):
+        assert derived_scalars(MSH, frame) == ["V_sw", "B_imf"]
+        cols = frame_columns(MSH, frame, MSH_SERVED)
+        assert "V_sw" in cols and "B_imf" in cols
+    assert "V_sw" not in frame_columns(MSH, None, MSH_SERVED)
+    assert "cone_pgsm" in frame_columns(MSH, "pgsm", MSH_SERVED)
+
+
+def test_framed_queries_fetch_magnitude_inputs():
+    cols = required_columns(FrameSpec(MSH, "swi"))
+    assert {"Bx_imf", "By_imf", "Bz_imf", "Vx_sw", "Vy_sw", "Vz_sw"} <= set(cols)
+    assert required_columns(FrameSpec(MSH, None, cone=(0.0, 30.0))) == ["Bx_imf", "By_imf", "Bz_imf"]
+    assert required_columns(FrameSpec(SW, "gsm")) == []

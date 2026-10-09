@@ -18,6 +18,8 @@ from space_mango.frames import (
     OUTPUT_COLUMNS,
     FrameSpec,
     candidates,
+    derived_exprs,
+    derived_scalars,
     frame_columns,
     implied_flags,
     required_columns,
@@ -135,9 +137,10 @@ class MangoDataset:
         if columns:
             lf = lf.select(columns)
         elif frame_spec is not None and frame_spec.frame in ("gsm", "swi"):
-            lf = lf.select(
-                frame_columns(region.value, frame_spec.frame, lf.collect_schema().names())
-            )
+            served = lf.collect_schema().names()
+            if derived_scalars(region.value, frame_spec.frame):
+                lf = lf.with_columns(derived_exprs())
+            lf = lf.select(frame_columns(region.value, frame_spec.frame, served))
         return lf
 
     def query(

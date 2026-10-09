@@ -322,3 +322,10 @@ def test_column_info_covers_every_output_column():
     for region in (MSH, MSP):
         for c in OUTPUT_COLUMNS[region]:
             assert set(COLUMN_INFO[c]) == {"unit", "frame", "description"}
+
+
+def test_cone_pgsm_is_the_transformed_imf_cone():
+    df = msh_frame([IMF], v_sw=(-400.0, 60.0, -30.0))
+    out = to_pgsm(df, FrameSpec(MSH, "pgsm", cone=(0.0, 180.0), clock=137.0))
+    for row in out.iter_rows(named=True):
+        assert row["cone_pgsm"] == pytest.approx(clock_cone(row)[1])

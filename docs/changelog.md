@@ -6,6 +6,8 @@
   columns; `cone`, `clock` and `tilt` select samples (GSM ranges; in SWI/PGSM the cone is
   measured from −V_sw); PGSM rotates magnetosheath data to a target clock angle or applies
   the dipole-tilt symmetry (Michotte de Welle 2024). Without `frame`, results are unchanged.
+  With a frame, the computed magnitudes `V_sw` and `B_imf` are returned, and PGSM
+  magnetosheath rows carry their IMF cone `cone_pgsm`.
 - **Release order:** deploy the 0.3 server before publishing the client, for
   `count(...)` with a frame or selection. `get_data` with a frame also works against a 0.2
   server.
