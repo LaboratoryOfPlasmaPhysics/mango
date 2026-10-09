@@ -8,7 +8,7 @@ import pytest
 
 from space_mango._regions_generated import MagnetosheathAPI, MagnetosphereAPI, SolarWindAPI
 from space_mango.client import MangoClient
-from space_mango.errors import FrameError
+from space_mango.errors import FrameError, UnknownColumnError
 
 MSH, MSP, SW = "magnetosheath", "magnetosphere", "solar_wind"
 
@@ -76,7 +76,7 @@ def test_requested_columns_in_frame(fc):
 
 
 def test_column_from_another_frame_is_an_error(fc):
-    with pytest.raises(FrameError, match="gsm"):
+    with pytest.raises(FrameError, match="GSM"):
         fc.get_data(MSH, frame="swi", columns=["Time", "Bx"])
 
 
@@ -127,3 +127,31 @@ def test_region_objects(fc):
     assert len(MagnetosheathAPI(lambda: fc).get_data(frame="swi", cone=[40, 50])) == 1
     assert len(MagnetosphereAPI(lambda: fc).get_data(tilt=[10, 15])) == 1
     assert "Bx" in SolarWindAPI(lambda: fc).get_data(frame="gsm").columns
+
+
+def test_limit_applies_before_selection(fc):
+    assert len(fc.get_data(MSH, cone=[0, 180], limit=1)) <= 1
+
+
+def test_typo_with_selection_is_unknown_column(fc):
+    with pytest.raises(UnknownColumnError, match="Did you mean 'Time'"):
+        fc.get_data(MSH, cone=[0, 90], columns=["Tme"])
+
+
+def test_other_frame_columns_error(fc):
+    with pytest.raises(FrameError, match="GSM"):
+        fc.get_data(MSH, frame="swi", columns=["Bx"])
+    with pytest.raises(FrameError):
+        fc.get_data(MSH, frame="gsm", columns=["mirrored"])
+
+
+def test_count_validates_columns_like_get_data(fc):
+    with pytest.raises(FrameError, match="GSM"):
+        fc.count(MSH, frame="swi", columns=["Bx"])
+
+
+def test_count_download_estimate_uses_frame_columns(fc):
+    assert (
+        fc.count(MSH, frame="swi")["download_mb_estimate"]
+        < fc.count(MSH)["download_mb_estimate"]
+    )

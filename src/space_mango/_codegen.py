@@ -54,14 +54,17 @@ def _frame_params(region: Region) -> str:
 
 
 def _frame_doc(region: Region) -> str:
-    frames = {
-        Region.magnetosheath: "'gsm', 'swi', 'pgsm'",
-        Region.magnetosphere: "'gsm', 'pgsm'",
-    }.get(region, "'gsm'")
-    return (
-        f"\n        frame: one of {frames}; see the Frames section of the user guide. cone and\n"
-        "        clock select on the GSM values, or in SWI/PGSM on the cone measured from -V_sw.\n"
-    )
+    text = {
+        Region.magnetosheath: (
+            "frame='gsm' | 'swi' | 'pgsm'; cone=[min, max] and clock=[min, max] select on GSM\n"
+            "        values, or (swi/pgsm) the cone from -V_sw; in pgsm clock is one target value."
+        ),
+        Region.magnetosphere: (
+            "frame='gsm' | 'pgsm'; cone/clock=[min, max] select on GSM values;\n"
+            "        tilt=[min, max] in degrees (with the tilt symmetry in pgsm)."
+        ),
+    }.get(region, "frame='gsm' returns the GSM columns and scalars.")
+    return f"\n        {text}\n"
 
 
 def _render_class(region: Region) -> str:

@@ -465,7 +465,8 @@ class MangoClient:
         returned. cone=[min, max] and clock=[min, max] (degrees; clock may wrap, e.g. [330, 30])
         select rows on the GSM values, or in SWI/PGSM on the cone measured from -V_sw;
         tilt=[min, max] (degrees, magnetosphere). In PGSM, clock is one target value. See the
-        "Frames" section of the user guide.
+        "Frames" section of the user guide. With a frame or a cone/clock/tilt selection, limit
+        applies to the rows fetched, before the selection (and before the PGSM transform).
         """
         if frame is not None or cone is not None or clock is not None or tilt is not None:
             self._check_region(region)
@@ -771,6 +772,41 @@ class MangoClient:
             ).with_columns(pl.col("start", "stop").str.to_datetime(time_unit="us"))
         return self._spacecraft_cache[region]
 
+    def _frame_fetch(
+        self, spec: FrameSpec, columns: list[str] | None
+    ) -> tuple[list[str] | None, list[str], list[str]]:
+        """(columns to fetch, requested served columns, PGSM output columns) for a framed
+        query; shared by get_data and count. Raises FrameError for a column of another frame;
+        other unknown names are left to the server-side/cache validation (did-you-mean)."""
+        region = spec.region
+        served = [c["name"] for c in self._describe_raw(region)["columns"]]
+        allowed = frame_columns(region, spec.frame, served)
+        outputs = PGSM_OUTPUT_COLUMNS[region] if spec.frame == "pgsm" else []
+        for c in columns or []:
+            other = frame_of_column(c)
+            if (other and other != spec.frame) or (
+                spec.frame != "pgsm" and c in PGSM_OUTPUT_COLUMNS[region]
+            ):
+                what = other.upper() if other else "PGSM"
+                shown = spec.frame.upper() if spec.frame else "unframed"
+                raise FrameError(
+                    f"'{c}' is a {what} column; frame={spec.frame!r} returns the {shown} "
+                    "columns and the scalars."
+                    if spec.frame
+                    else f"'{c}' is a {what} column; it needs frame={what.lower()!r}."
+                )
+        wanted = (
+            [c for c in columns if c not in outputs]
+            if columns is not None
+            else [c for c in allowed if c not in outputs]
+        )
+        fetch = (
+            None
+            if columns is None and spec.frame is None
+            else list(dict.fromkeys([*wanted, *required_columns(spec)]))
+        )
+        return fetch, wanted, outputs
+
     def _get_data_framed(
         self,
         spec: FrameSpec,
@@ -795,26 +831,7 @@ class MangoClient:
                 "tilt_min/tilt_max (radians, plain selection) cannot be combined with "
                 "tilt=[min, max] (degrees)."
             )
-        served = [c["name"] for c in self._describe_raw(region)["columns"]]
-        allowed = frame_columns(region, spec.frame, served)
-        for c in columns or []:
-            if c not in allowed:
-                where = frame_of_column(c) or "another region"
-                raise FrameError(
-                    f"'{c}' is a {where} column; frame={spec.frame!r} returns "
-                    f"{', '.join(a for a in allowed if a not in served or frame_of_column(a))}."
-                )
-        outputs = PGSM_OUTPUT_COLUMNS[region] if spec.frame == "pgsm" else []
-        wanted = (
-            [c for c in columns if c not in outputs]
-            if columns is not None
-            else [c for c in allowed if c not in outputs]
-        )
-        fetch = (
-            None
-            if columns is None and spec.frame is None
-            else list(dict.fromkeys([*wanted, *required_columns(spec)]))
-        )
+        fetch, wanted, outputs = self._frame_fetch(spec, columns)
         extra: dict[str, object] = dict(filters)
         if spec.frame == "pgsm" and spec.tilt is not None:
             t = math.radians(max(abs(spec.tilt[0]), abs(spec.tilt[1])))
@@ -905,9 +922,7 @@ class MangoClient:
                 sw_paired_only or paired,
                 normalized_only or normalized,
             )
-            if spec.frame == "pgsm" and _as_names(columns) is not None:
-                outs = PGSM_OUTPUT_COLUMNS[spec.region]
-                columns = [c for c in (_as_names(columns) or []) if c not in outs]
+            columns = self._frame_fetch(spec, _as_names(columns))[0]
         columns, spacecraft = _as_names(columns), _as_names(spacecraft)
         params, query = self._request_params(
             region,
@@ -927,11 +942,8 @@ class MangoClient:
         c = self._get(f"/api/v1/regions/{region}/count", params).json()
         out = {"n_rows": c["n_rows"], "est_mb": c["est_bytes"] / 1e6}
         if self._cache_enabled and self._cache_usable:
-            dl_columns = columns
-            if spec is not None and columns is not None:
-                dl_columns = list(dict.fromkeys([*columns, *required_columns(spec)]))
             download = self._download_bytes(
-                region, dl_columns, spacecraft, query, sw_paired_only, normalized_only
+                region, columns, spacecraft, query, sw_paired_only, normalized_only
             )
             out["download_mb_estimate"] = download / 1e6
         else:

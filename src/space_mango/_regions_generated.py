@@ -88,8 +88,8 @@ class MagnetosphereAPI(RegionAPI):
         np_min / np_max : Local plasma density [cm⁻³]
         tp_min / tp_max : Local plasma temperature [K]
         bz_min / bz_max : Local Bz (GSM) [nT]
-        frame: one of 'gsm', 'pgsm'; see the Frames section of the user guide. cone and
-        clock select on the GSM values, or in SWI/PGSM on the cone measured from -V_sw.
+        frame='gsm' | 'pgsm'; cone/clock=[min, max] select on GSM values;
+        tilt=[min, max] in degrees (with the tilt symmetry in pgsm).
         """
         return self._call("get_data", locals())
 
@@ -217,8 +217,8 @@ class MagnetosheathAPI(RegionAPI):
         np_min / np_max : Local plasma density [cm⁻³]
         tp_min / tp_max : Local plasma temperature [K]
         bz_min / bz_max : Local Bz (GSM) [nT]
-        frame: one of 'gsm', 'swi', 'pgsm'; see the Frames section of the user guide. cone and
-        clock select on the GSM values, or in SWI/PGSM on the cone measured from -V_sw.
+        frame='gsm' | 'swi' | 'pgsm'; cone=[min, max] and clock=[min, max] select on GSM
+        values, or (swi/pgsm) the cone from -V_sw; in pgsm clock is one target value.
         """
         return self._call("get_data", locals())
 
@@ -311,8 +311,7 @@ class SolarWindAPI(RegionAPI):
         np_min / np_max : Local plasma density [cm⁻³]
         tp_min / tp_max : Local plasma temperature [K]
         bz_min / bz_max : Local Bz (GSM) [nT]
-        frame: one of 'gsm'; see the Frames section of the user guide. cone and
-        clock select on the GSM values, or in SWI/PGSM on the cone measured from -V_sw.
+        frame='gsm' returns the GSM columns and scalars.
         """
         return self._call("get_data", locals())
 
