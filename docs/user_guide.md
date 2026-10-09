@@ -232,8 +232,8 @@ Scalars (frame-free, returned in every frame where they are served): `Time`, `SC
 `Tp`, `SW_pairing`, `Norma_pos`, `Np_sw`, `Tp_sw`, `Pd_sw`, `Beta_sw`, `Ma_sw`, `R_mp`,
 `R_bs`, `R_norm`, `tilt`. With any `frame` (magnetosheath and magnetosphere), two computed
 magnitudes are added: `V_sw` (km/s, |V_sw|) and `B_imf` (nT, |B_imf|), from the served
-components. In SWI and PGSM the GSM IMF and solar-wind vectors themselves are not
-returned. With an explicit `frame`, asking in `columns=` for a column of another frame
+components (with an explicit `columns=` list, only if named there). In SWI and PGSM the
+GSM IMF and solar-wind vectors themselves are not returned. With an explicit `frame`, asking in `columns=` for a column of another frame
 raises a `FrameError` naming the frame it belongs to; without `frame`, every served column
 may be requested.
 
