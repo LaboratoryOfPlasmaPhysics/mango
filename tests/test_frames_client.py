@@ -155,3 +155,13 @@ def test_count_download_estimate_uses_frame_columns(fc):
         fc.count(MSH, frame="swi")["download_mb_estimate"]
         < fc.count(MSH)["download_mb_estimate"]
     )
+
+
+def test_selection_without_frame_allows_every_served_column(fc):
+    cols = ["Time", "Bx", "Bx_swi"]
+    r = fc.get_data(MSH, cone=[0, 180], columns=cols)
+    assert r.columns == cols
+    assert len(r) == len(fc.get_data(MSH, cone=[0, 180]))
+    assert fc.count(MSH, cone=[0, 180], columns=cols)["n_rows"] == len(r)
+    with pytest.raises(FrameError, match="pgsm"):
+        fc.get_data(MSH, cone=[0, 180], columns=["mirrored"])

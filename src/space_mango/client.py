@@ -784,17 +784,14 @@ class MangoClient:
         outputs = PGSM_OUTPUT_COLUMNS[region] if spec.frame == "pgsm" else []
         for c in columns or []:
             other = frame_of_column(c)
-            if (other and other != spec.frame) or (
-                spec.frame != "pgsm" and c in PGSM_OUTPUT_COLUMNS[region]
-            ):
-                what = other.upper() if other else "PGSM"
-                shown = spec.frame.upper() if spec.frame else "unframed"
+            if spec.frame is not None and other and other != spec.frame:
+                shown = spec.frame.upper()
                 raise FrameError(
-                    f"'{c}' is a {what} column; frame={spec.frame!r} returns the {shown} "
-                    "columns and the scalars."
-                    if spec.frame
-                    else f"'{c}' is a {what} column; it needs frame={what.lower()!r}."
+                    f"'{c}' is a {other.upper()} column; frame={spec.frame!r} returns the "
+                    f"{shown} columns and the scalars."
                 )
+            if spec.frame != "pgsm" and c in PGSM_OUTPUT_COLUMNS[region]:
+                raise FrameError(f"'{c}' is a PGSM column; it needs frame='pgsm'.")
         wanted = (
             [c for c in columns if c not in outputs]
             if columns is not None
