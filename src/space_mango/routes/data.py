@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 
 from space_mango.dataset import MangoDataset, get_dataset
 from space_mango.filtering import time_window
+from space_mango.frames import make_spec
 from space_mango.models import (
     REGIONS,
     Format,
@@ -14,7 +15,6 @@ from space_mango.models import (
     filter_for_column,
     filters_for,
 )
-from space_mango.pgsm import make_spec
 from space_mango.routes.schemas import (
     ColumnDescription,
     CountResult,
@@ -116,17 +116,17 @@ def region_count(
     sw_paired_only: bool = Query(False),
     normalized_only: bool = Query(False),
     frame: str | None = Query(None, description="'pgsm': count the rows of the PGSM transform"),
-    pgsm_cone_min: float | None = Query(None, description="PGSM magnetosheath cone, degrees"),
-    pgsm_cone_max: float | None = Query(None),
-    pgsm_tilt_min: float | None = Query(None, description="PGSM magnetosphere tilt, degrees"),
-    pgsm_tilt_max: float | None = Query(None),
+    cone_min: float | None = Query(None, description="PGSM magnetosheath cone, degrees"),
+    cone_max: float | None = Query(None),
+    tilt_deg_min: float | None = Query(None, description="PGSM magnetosphere tilt, degrees"),
+    tilt_deg_max: float | None = Query(None),
     ds: MangoDataset = Depends(get_dataset),
 ) -> CountResult:
     """Rows a /data request with the same parameters would return, and an estimated size.
     With frame=pgsm: the rows get_data(frame='pgsm') returns (selected twice = counted twice)."""
     start_dt, stop_dt, stop_inclusive = time_window(start, stop, time_min, time_max)
-    cone = None if pgsm_cone_min is None and pgsm_cone_max is None else (pgsm_cone_min, pgsm_cone_max)
-    tilt = None if pgsm_tilt_min is None and pgsm_tilt_max is None else (pgsm_tilt_min, pgsm_tilt_max)
+    cone = None if cone_min is None and cone_max is None else (cone_min, cone_max)
+    tilt = None if tilt_deg_min is None and tilt_deg_max is None else (tilt_deg_min, tilt_deg_max)
     pgsm = make_spec(region.value, frame, cone=cone, tilt=tilt, require_clock=False)  # pyright: ignore[reportArgumentType]
     n_rows, est_bytes = ds.count(
         region,

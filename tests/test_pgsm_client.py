@@ -8,8 +8,8 @@ import pytest
 
 from space_mango._regions_generated import MagnetosheathAPI, MagnetosphereAPI
 from space_mango.client import MangoClient
-from space_mango.errors import PgsmError, ServerError
-from space_mango.pgsm import OUTPUT_COLUMNS
+from space_mango.errors import FrameError, ServerError
+from space_mango.frames import OUTPUT_COLUMNS
 
 MSH, MSP = "magnetosheath", "magnetosphere"
 
@@ -111,7 +111,7 @@ def test_errors_before_any_data_request(pgsm_dir, make_api, tmp_path, region, kw
             return inner.handle_request(request)
 
     c = MangoClient("http://testserver", transport=Counting(), cache_dir=tmp_path / "c")
-    with pytest.raises(PgsmError):
+    with pytest.raises(FrameError):
         c.get_data(region, **kwargs)
     assert not [p for p in calls if p.endswith("/data")]
 

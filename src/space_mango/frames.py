@@ -1,4 +1,4 @@
-"""PGSM frame (B. Michotte de Welle, PhD thesis 2024, sections 2.7.3-2.7.4, eqs 2.13-2.20).
+"""Coordinate frames of MANGO data: GSM, SWI and PGSM (B. Michotte de Welle, PhD thesis 2024, sections 2.7.3-2.7.4, eqs 2.13-2.20).
 
 Magnetosheath: the served SWI columns, selected by IMF cone angle and rotated about X to a
 target IMF clock angle (eqs 2.19-2.20). Magnetosphere: GSM plus the dipole-tilt symmetry
@@ -67,7 +67,7 @@ class PgsmSpec:
 
 
 def _bad(message: str) -> QueryError:
-    return QueryError("bad_pgsm", message)
+    return QueryError("bad_frame", message)
 
 
 def _range(name: str, value: object, lo: float, hi: float) -> tuple[float, float]:

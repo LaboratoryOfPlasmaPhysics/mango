@@ -26,9 +26,9 @@ from space_mango.cache import (
 )
 from space_mango.errors import (
     CacheMissError,
+    FrameError,
     MangoError,
     MangoFilterError,
-    PgsmError,
     QueryError,
     ServerError,
     UnknownColumnError,
@@ -39,22 +39,22 @@ from space_mango.errors import (
     error_from_response,
 )
 from space_mango.filtering import build_filter_exprs, time_window
-from space_mango.models import filters_for
-from space_mango.pgsm import (
+from space_mango.frames import (
     COLUMN_INFO as PGSM_COLUMN_INFO,
 )
-from space_mango.pgsm import (
+from space_mango.frames import (
     OUTPUT_COLUMNS as PGSM_OUTPUT_COLUMNS,
 )
-from space_mango.pgsm import (
+from space_mango.frames import (
     REQUIRED_COLUMNS as PGSM_REQUIRED_COLUMNS,
 )
-from space_mango.pgsm import (
+from space_mango.frames import (
     THESIS,
     PgsmSpec,
     make_spec,
     to_pgsm,
 )
+from space_mango.models import filters_for
 from space_mango.result import MangoResult
 from space_mango.timeparse import TimeLike, to_iso
 
@@ -202,7 +202,7 @@ def _pgsm_fetch_args(
     transform inputs; for the magnetosphere, |tilt| <= max(|t1|, |t2|) (radians) narrows the
     download (the exact selection is done by the transform)."""
     if spec.region == "magnetosphere" and {"tilt_min", "tilt_max"} & set(filters):
-        raise PgsmError(
+        raise FrameError(
             "tilt_min/tilt_max (radians, plain selection) cannot be combined with "
             "frame='pgsm'; use tilt=[min, max] in degrees."
         )
@@ -225,12 +225,12 @@ def _pgsm_fetch_args(
     return fetch, extra
 
 
-def _pgsm_count_params(spec: PgsmSpec) -> dict[str, object]:
+def _frame_count_params(spec: PgsmSpec) -> dict[str, object]:
     params: dict[str, object] = {"frame": "pgsm"}
     if spec.cone is not None:
-        params |= {"pgsm_cone_min": str(spec.cone[0]), "pgsm_cone_max": str(spec.cone[1])}
+        params |= {"cone_min": str(spec.cone[0]), "cone_max": str(spec.cone[1])}
     if spec.tilt is not None:
-        params |= {"pgsm_tilt_min": str(spec.tilt[0]), "pgsm_tilt_max": str(spec.tilt[1])}
+        params |= {"tilt_deg_min": str(spec.tilt[0]), "tilt_deg_max": str(spec.tilt[1])}
     return params
 
 
@@ -880,10 +880,9 @@ class MangoClient:
             self._check_region(region)
             spec = _pgsm_spec(region, frame, cone, clock, tilt, require_clock=False)
         if spec is not None:
-            if "pgsm_count" not in self.dataset_info().get("features", []):
+            if "frames" not in self.dataset_info().get("features", []):
                 raise ServerError(
-                    f"The MANGO server at {self._base_url} cannot count PGSM rows (it needs "
-                    "space-mango >= 0.3 on the server); get_data(frame='pgsm') still works."
+                    f"The MANGO server at {self._base_url} cannot count with frames or angle selections (it needs space-mango >= 0.3 on the server); get_data() still works."
                 )
             fetch, extra = _pgsm_fetch_args(spec, _as_names(columns), filters)
             columns, filters = fetch, extra  # pyright: ignore[reportAssignmentType]
@@ -904,7 +903,7 @@ class MangoClient:
         )
         params.pop("format", None)
         if spec is not None:
-            params |= _pgsm_count_params(spec)
+            params |= _frame_count_params(spec)
         c = self._get(f"/api/v1/regions/{region}/count", params).json()
         out = {"n_rows": c["n_rows"], "est_mb": c["est_bytes"] / 1e6}
         if self._cache_enabled and self._cache_usable:

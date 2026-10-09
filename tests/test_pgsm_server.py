@@ -42,29 +42,29 @@ def test_count_magnetosheath(pgsm_api, cone, n):
     # row 1: f = 54.7 -> one row in (50,60), one in (120,130), two in (0,180)
     # row 2: f = 90 -> two rows whenever 90 is in range; row 3 is not normalized
     status, body = _count(pgsm_api, "magnetosheath", frame="pgsm",
-                          pgsm_cone_min=cone[0], pgsm_cone_max=cone[1])
+                          cone_min=cone[0], cone_max=cone[1])
     assert status == 200 and body["n_rows"] == n
 
 
 @pytest.mark.parametrize(("tilt", "n"), [((-5, 5), 2), ((10, 15), 1), ((-15, -10), 1), ((20, 30), 0)])
 def test_count_magnetosphere(pgsm_api, tilt, n):
     status, body = _count(pgsm_api, "magnetosphere", frame="pgsm",
-                          pgsm_tilt_min=tilt[0], pgsm_tilt_max=tilt[1])
+                          tilt_deg_min=tilt[0], tilt_deg_max=tilt[1])
     assert status == 200 and body["n_rows"] == n
 
 
 @pytest.mark.parametrize(
     ("region", "params"),
     [
-        ("magnetosheath", {"pgsm_cone_min": 0, "pgsm_cone_max": 90}),
+        ("magnetosheath", {"cone_min": 0, "cone_max": 90}),
         ("solar_wind", {"frame": "pgsm"}),
-        ("magnetosheath", {"frame": "pgsm", "pgsm_cone_min": 0}),
-        ("magnetosphere", {"frame": "pgsm", "pgsm_cone_min": 0, "pgsm_cone_max": 9}),
+        ("magnetosheath", {"frame": "pgsm", "cone_min": 0}),
+        ("magnetosphere", {"frame": "pgsm", "cone_min": 0, "cone_max": 9}),
     ],
 )
-def test_count_refuses_bad_pgsm(pgsm_api, region, params):
+def test_count_refuses_bad_frame(pgsm_api, region, params):
     status, body = _count(pgsm_api, region, **params)
-    assert status == 400 and body["detail"]["error"] == "bad_pgsm"
+    assert status == 400 and body["detail"]["error"] == "bad_frame"
 
 
 def test_data_endpoint_refuses_frame(pgsm_api):
@@ -72,5 +72,5 @@ def test_data_endpoint_refuses_frame(pgsm_api):
     assert r.status_code == 400
 
 
-def test_dataset_advertises_pgsm_count(pgsm_api):
-    assert "pgsm_count" in pgsm_api.get("/api/v1/dataset").json()["features"]
+def test_dataset_advertises_frames(pgsm_api):
+    assert "frames" in pgsm_api.get("/api/v1/dataset").json()["features"]

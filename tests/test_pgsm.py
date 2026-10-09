@@ -4,8 +4,8 @@ import numpy as np
 import polars as pl
 import pytest
 
-from space_mango.errors import MangoError, PgsmError, QueryError, error_from_query
-from space_mango.pgsm import (
+from space_mango.errors import FrameError, MangoError, QueryError, error_from_query
+from space_mango.frames import (
     COLUMN_INFO,
     OUTPUT_COLUMNS,
     PgsmSpec,
@@ -63,12 +63,12 @@ def test_count_may_omit_clock():
 def test_bad_parameters(region, kwargs, message):
     with pytest.raises(QueryError, match=message) as info:
         make_spec(region, **{"frame": None, **kwargs})  # pyright: ignore[reportArgumentType]
-    assert info.value.code == "bad_pgsm"
+    assert info.value.code == "bad_frame"
 
 
-def test_bad_pgsm_maps_to_pgsm_error():
-    err = error_from_query(QueryError("bad_pgsm", "x"))
-    assert isinstance(err, PgsmError) and isinstance(err, MangoError)
+def test_bad_frame_maps_to_frame_error():
+    err = error_from_query(QueryError("bad_frame", "x"))
+    assert isinstance(err, FrameError) and isinstance(err, MangoError)
 
 
 MSH = "magnetosheath"

@@ -7,7 +7,7 @@ import numpy as np
 import polars as pl
 import pytest
 
-from space_mango.pgsm import PgsmSpec, imf_sign, to_pgsm
+from space_mango.frames import PgsmSpec, imf_sign, to_pgsm
 
 DATA = Path(__file__).resolve().parent.parent / "docs" / "data"
 
