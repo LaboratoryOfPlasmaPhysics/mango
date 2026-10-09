@@ -14,6 +14,7 @@ from space_mango.cache import CacheInfo
 from space_mango.client import DEFAULT_URL, MangoClient
 from space_mango.errors import (
     CacheMissError,
+    FrameError,
     MangoError,
     MangoFilterError,
     ServerError,
@@ -37,7 +38,7 @@ if TYPE_CHECKING:
 __all__ = [
     "DEFAULT_URL", "MangoClient", "MangoResult",
     "MangoError", "UnknownRegionError", "UnknownSpacecraftError", "UnknownColumnError",
-    "MangoFilterError", "TimeParseError", "ServerError", "CacheMissError",
+    "MangoFilterError", "TimeParseError", "ServerError", "CacheMissError", "FrameError",
     "get_data", "regions", "columns", "filters", "describe", "spacecraft", "count",
     "search", "timeline", "cite", "dataset_info", "cache",
     "magnetosphere", "magnetosheath", "solar_wind",

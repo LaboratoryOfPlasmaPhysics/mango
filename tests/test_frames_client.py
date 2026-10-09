@@ -165,3 +165,9 @@ def test_selection_without_frame_allows_every_served_column(fc):
     assert fc.count(MSH, cone=[0, 180], columns=cols)["n_rows"] == len(r)
     with pytest.raises(FrameError, match="pgsm"):
         fc.get_data(MSH, cone=[0, 180], columns=["mirrored"])
+
+
+def test_frame_error_exported():
+    import space_mango as m
+
+    assert issubclass(m.FrameError, m.MangoError) and "FrameError" in m.__all__

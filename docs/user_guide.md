@@ -159,6 +159,7 @@ All inherit from `MangoError`.
 - `MangoFilterError`: unknown filter, or a filter that applies to another region.
 - `TimeParseError`: `start`/`stop` could not be interpreted.
 - `ServerError`: the server answered with an error (including 404 from a server older than 0.2).
+- `FrameError`: misused frame, cone, clock or tilt.
 - `CacheMissError`: `offline=True` and the data or metadata is not in the cache.
 
 ## Citing
@@ -295,7 +296,7 @@ twice.
 measured sgn(Bx_imf); magnetosphere: true for the tilt mirror ψ → −ψ). Because SWI already
 applies B → −B to samples measured with Bx_imf < 0, no magnetosheath PGSM row is the bare
 measurement for those samples: `~mirrored` does not select unsymmetrized data. Also
-`bx_sign` (magnetosheath) and `tilt_pgsm` (magnetosphere, degrees: the row's tilt, ψ as
+`bx_sign` (magnetosheath: the PGSM symmetry sign s, +1 as rotated from SWI, −1 Y-reflected, eq 2.19; it equals the sign of the PGSM IMF Bx except on rows whose SWI cone exceeds 90° (aberration, about 3.5% of rows)) and `tilt_pgsm` (magnetosphere, degrees: the row's tilt, ψ as
 measured or −ψ on mirrored rows; note the served `tilt` column is in radians).
 
 ### Server version

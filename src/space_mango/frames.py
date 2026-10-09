@@ -56,7 +56,7 @@ COLUMN_INFO: dict[str, dict[str, str]] = {
     "mirrored": {"unit": "", "frame": "", "description":
                  "magnetosheath: IMF Bx sign of the row (bx_sign) differs from the measured sgn(Bx_imf); magnetosphere: tilt mirror psi -> -psi"},
     "bx_sign": {"unit": "", "frame": "", "description":
-                "Sign of IMF Bx given to the row in PGSM (+1 or -1)"},
+                "PGSM symmetry sign s (+1: as rotated from SWI; -1: Y-reflected, eq 2.19). It equals the sign of the PGSM IMF Bx except on rows whose SWI cone exceeds 90 deg (aberration, about 3.5% of rows)."},
     "tilt_pgsm": {"unit": "deg", "frame": "", "description":
                   "Dipole tilt of the row in PGSM (negated on mirrored rows)"},
 }
@@ -278,22 +278,23 @@ def spec_from_params(
         a, b = raw.get(lo), raw.get(hi)
         return None if a is None and b is None else (a, b)
 
+    if raw.get("frame") == "pgsm" and not for_count:
+        raise _bad("frame='pgsm' is computed by the client (space_mango); /data serves frames "
+                   "'gsm' and 'swi', or no frame.")
+    for name, lo, hi in (("cone", "cone_min", "cone_max"), ("clock", "clock_min", "clock_max"),
+                         ("tilt_deg", "tilt_deg_min", "tilt_deg_max")):
+        if (raw.get(lo) is None) != (raw.get(hi) is None):
+            raise _bad(f"{name}_min and {name}_max must be given together (degrees).")
     tilt = pair("tilt_deg_min", "tilt_deg_max")
-    # frame=pgsm: the client itself sends tilt_min/max (radians) as a pre-filter next to tilt_deg_*.
-    if (tilt is not None and raw.get("frame") != "pgsm"
-            and ("tilt_min" in raw or "tilt_max" in raw)):
+    if tilt is not None and ("tilt_min" in raw or "tilt_max" in raw):
         raise _bad("tilt_deg_min/max (degrees) cannot be combined with tilt_min/tilt_max (radians).")
-    spec = make_spec(
+    return make_spec(
         region, raw.get("frame"),
         cone=pair("cone_min", "cone_max"),  # pyright: ignore[reportArgumentType]
         clock=pair("clock_min", "clock_max"),  # pyright: ignore[reportArgumentType]
         tilt=tilt,  # pyright: ignore[reportArgumentType]
         require_clock=False,
     )
-    if spec is not None and spec.frame == "pgsm" and not for_count:
-        raise _bad("frame='pgsm' is computed by the client (space_mango); /data serves frames "
-                   "'gsm' and 'swi', or no frame.")
-    return spec
 
 
 def candidates(spec: FrameSpec) -> list[tuple[pl.Expr, int]]:

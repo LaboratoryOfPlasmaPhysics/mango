@@ -94,3 +94,19 @@ def test_data_refuses_bad_frames(frames_api, region, params):
 def test_pgsm_count_still_works(frames_api):
     status, body = _count(frames_api, MSH, frame="pgsm", cone_min=0, cone_max=180)
     assert status == 200 and body["n_rows"] == 4  # two paired rows, each twice
+
+
+@pytest.mark.parametrize(
+    ("path", "params", "message"),
+    [
+        ("data", {"frame": "pgsm"}, "computed by the client"),
+        ("data", {"frame": "pgsm", "cone_min": 0}, "computed by the client"),
+        ("count", {"cone_min": 0}, "must be given together"),
+        ("count", {"frame": "pgsm", "tilt_deg_min": 0, "tilt_deg_max": 5, "tilt_min": 0.1}, "tilt_min"),
+    ],
+)
+def test_frame_param_messages(frames_api, path, params, message):
+    region = MSP if "tilt_deg_min" in params else MSH
+    r = frames_api.get(f"/api/v1/regions/{region}/{path}", params=params)
+    assert r.status_code == 400
+    assert r.json()["detail"]["error"] == "bad_frame" and message in r.json()["detail"]["message"]

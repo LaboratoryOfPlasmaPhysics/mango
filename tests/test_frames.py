@@ -224,7 +224,10 @@ def test_spec_from_params():
     ("raw", "for_count", "message"),
     [
         ({"frame": "pgsm", "cone_min": "0", "cone_max": "90"}, False, "computed by the client"),
-        ({"cone_min": "0"}, False, r"\[min, max\]"),
+        ({"cone_min": "0"}, False, "must be given together"),
+        ({"clock_max": "5"}, True, "must be given together"),
+        ({"frame": "pgsm"}, False, "computed by the client"),
+        ({"frame": "pgsm", "tilt_deg_min": "0", "tilt_deg_max": "5", "tilt_min": "0.1"}, True, "tilt_min"),
         ({"tilt_deg_min": "0", "tilt_deg_max": "5", "tilt_min": "0.1"}, False, "tilt_min"),
     ],
 )
