@@ -9,6 +9,7 @@ and by the server (/count). Angles are in degrees.
 from __future__ import annotations
 
 import math
+import numbers
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -90,7 +91,7 @@ def _range(name: str, value: object, lo: float, hi: float, *, ordered: bool = Tr
 
 
 def _is_number(value: object) -> bool:
-    return isinstance(value, int | float) and not isinstance(value, bool)
+    return isinstance(value, numbers.Real) and not isinstance(value, bool)
 
 
 def _clock_value(value: object) -> float:
@@ -209,7 +210,7 @@ def _clock_in(clock: pl.Expr, c1: float, c2: float) -> pl.Expr:
     if c1 <= c2 and c2 - c1 >= 360.0:
         return clock.is_not_null() & clock.is_not_nan()
     a, b = c1 % 360.0, c2 % 360.0
-    return clock.is_between(a, b) if a <= b else (clock >= a) | (clock <= b)
+    return clock.is_between(a, b) if a <= b else clock.is_not_nan() & ((clock >= a) | (clock <= b))
 
 
 def selection(spec: FrameSpec) -> pl.Expr | None:

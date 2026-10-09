@@ -141,6 +141,17 @@ def test_imf_lands_at_target_clock_and_cone(clock):
         assert got_cone == pytest.approx(cone)
 
 
+def test_cone_axis_is_minus_v_sw():
+    df = msh_frame([IMF], v_sw=(-400.0, 60.0, -30.0))
+    swi_cone = df.select(swi_cone_deg()).item()
+    assert abs(swi_cone - F) > 1.0  # would catch a regression to the X_GSM axis
+    out = to_pgsm(df, spec((0.0, 180.0), 137.0))
+    assert out.height == 2
+    for sign, cone in [(1, swi_cone), (-1, 180.0 - swi_cone)]:
+        row = out.filter(pl.col("bx_sign") == sign).row(0, named=True)
+        assert clock_cone(row)[1] == pytest.approx(cone)
+
+
 def test_original_bx_sign_is_not_mirrored():
     out = to_pgsm(msh_frame([IMF]), spec((0.0, 180.0), 90.0))
     flags = dict(zip(out["bx_sign"].to_list(), out["mirrored"].to_list(), strict=True))

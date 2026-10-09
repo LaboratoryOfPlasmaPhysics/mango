@@ -231,3 +231,34 @@ def test_spec_from_params():
 def test_spec_from_params_errors(raw, for_count, message):
     with pytest.raises(QueryError, match=message):
         spec_from_params(MSP if "tilt_deg_min" in raw else MSH, raw, for_count=for_count)
+
+
+# ---- NaN inputs are never selected -----------------------------------------------------
+
+NAN = float("nan")
+
+
+@pytest.mark.parametrize("clock", [[330, 30], [-30, 30], [0, 360], [10, 100]])
+def test_nan_imf_never_selected_by_clock(clock):
+    df = imf([(0.0, NAN, 1.0, -400, 0, 0), (0.0, 1.0, NAN, -400, 0, 0), (0.0, 0.0, 1.0, -400, 0, 0)])
+    spec = make_spec(MSH, None, clock=clock)
+    assert spec is not None
+    sel = selection(spec)
+    assert sel is not None
+    assert df.filter(sel).height <= 1  # only the finite row, and only if in range
+    assert df.filter(sel)["By_imf"].is_nan().sum() == 0 and df.filter(sel)["Bz_imf"].is_nan().sum() == 0
+
+
+@pytest.mark.parametrize("frame", [None, "swi"])
+def test_nan_imf_never_selected_by_cone(frame):
+    df = imf([(NAN, 1.0, 1.0, -400, 0, 0), (1.0, NAN, 1.0, -400, 0, 0)])
+    sel = selection(FrameSpec(MSH, frame, cone=(0.0, 180.0)))
+    assert sel is not None
+    assert df.filter(sel).height == 0
+
+
+def test_numpy_scalar_clock():
+    spec = make_spec(MSH, "pgsm", cone=[0, 90], clock=np.int64(180))  # pyright: ignore[reportArgumentType]
+    assert spec is not None and spec.clock == 180.0
+    with pytest.raises(QueryError, match="clock in GSM is a range"):
+        make_spec(MSH, None, clock=np.float64(30))
