@@ -5,9 +5,8 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 
 from space_mango.dataset import MangoDataset, get_dataset
-from space_mango.errors import QueryError
 from space_mango.filtering import time_window
-from space_mango.frames import make_spec
+from space_mango.frames import spec_from_params
 from space_mango.models import (
     REGIONS,
     Format,
@@ -116,21 +115,19 @@ def region_count(
     time_max: str | None = Query(None),
     sw_paired_only: bool = Query(False),
     normalized_only: bool = Query(False),
-    frame: str | None = Query(None, description="'pgsm': count the rows of the PGSM transform"),
-    cone_min: float | None = Query(None, description="PGSM magnetosheath cone, degrees"),
+    frame: str | None = Query(None, description="gsm | swi | pgsm: frame of the returned columns and of cone (pgsm counts the rows of the PGSM transform)"),
+    cone_min: float | None = Query(None, description="IMF cone, degrees (from X_GSM; from -V_sw with frame=swi/pgsm)"),
     cone_max: float | None = Query(None),
-    tilt_deg_min: float | None = Query(None, description="PGSM magnetosphere tilt, degrees"),
+    clock_min: float | None = Query(None, description="IMF clock range, degrees; min > max wraps through north"),
+    clock_max: float | None = Query(None),
+    tilt_deg_min: float | None = Query(None, description="Dipole tilt range, degrees (magnetosphere)"),
     tilt_deg_max: float | None = Query(None),
     ds: MangoDataset = Depends(get_dataset),
 ) -> CountResult:
     """Rows a /data request with the same parameters would return, and an estimated size.
     With frame=pgsm: the rows get_data(frame='pgsm') returns (selected twice = counted twice)."""
     start_dt, stop_dt, stop_inclusive = time_window(start, stop, time_min, time_max)
-    cone = None if cone_min is None and cone_max is None else (cone_min, cone_max)
-    tilt = None if tilt_deg_min is None and tilt_deg_max is None else (tilt_deg_min, tilt_deg_max)
-    pgsm = make_spec(region.value, frame, cone=cone, tilt=tilt, require_clock=False)  # pyright: ignore[reportArgumentType]
-    if pgsm is not None and pgsm.frame != "pgsm":
-        raise QueryError("bad_frame", "frame/cone/clock/tilt without frame=pgsm are not available yet.")
+    spec = spec_from_params(region.value, dict(request.query_params), for_count=True)
     n_rows, est_bytes = ds.count(
         region,
         dict(request.query_params),
@@ -141,7 +138,7 @@ def region_count(
         stop_inclusive=stop_inclusive,
         sw_paired_only=sw_paired_only,
         normalized_only=normalized_only,
-        pgsm=pgsm,
+        frame_spec=spec,
     )
     return CountResult(n_rows=n_rows, est_bytes=est_bytes)
 
@@ -177,6 +174,13 @@ def region_data(
     normalized_only: bool = Query(False, description="Only return spatially normalized points"),
     limit: int | None = Query(None, ge=1, le=10_000_000, description="Max rows to return (default: all)"),
     format: Format = Query(Format.arrow, description="Output format: arrow or csv"),
+    frame: str | None = Query(None, description="gsm | swi: frame of the returned columns and of cone (pgsm: /count only)"),
+    cone_min: float | None = Query(None, description="IMF cone, degrees (from X_GSM; from -V_sw with frame=swi)"),
+    cone_max: float | None = Query(None),
+    clock_min: float | None = Query(None, description="IMF clock range, degrees; min > max wraps through north"),
+    clock_max: float | None = Query(None),
+    tilt_deg_min: float | None = Query(None, description="Dipole tilt range, degrees (magnetosphere)"),
+    tilt_deg_max: float | None = Query(None),
     # Range filters are passed as arbitrary query params (e.g. bz_imf_min=-5&pd_sw_max=4)
     # and extracted from the raw query string below.
     ds: MangoDataset = Depends(get_dataset),
@@ -191,8 +195,12 @@ def region_data(
     - High pressure: `pd_sw_min=5`
     - Near magnetopause in sheath: `d_msh_max=0.3`
     - Specific clock angle range: combine `by_imf_min/max` + `bz_imf_min/max`
+
+    Frames: `frame=gsm|swi` picks the returned columns; `cone_min/max`, `clock_min/max` (IMF) and
+    `tilt_deg_min/max` select rows. `frame=pgsm` is available on `/count` only.
     """
     start_dt, stop_dt, stop_inclusive = time_window(start, stop, time_min, time_max)
+    spec = spec_from_params(region.value, dict(request.query_params), for_count=False)
     df = ds.query(
         region,
         dict(request.query_params),
@@ -204,6 +212,7 @@ def region_data(
         sw_paired_only=sw_paired_only,
         normalized_only=normalized_only,
         limit=limit,
+        frame_spec=spec,
     )
 
     return frame_response(df, format, region.value)

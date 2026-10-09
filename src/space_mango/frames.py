@@ -279,7 +279,9 @@ def spec_from_params(
         return None if a is None and b is None else (a, b)
 
     tilt = pair("tilt_deg_min", "tilt_deg_max")
-    if tilt is not None and ("tilt_min" in raw or "tilt_max" in raw):
+    # frame=pgsm: the client itself sends tilt_min/max (radians) as a pre-filter next to tilt_deg_*.
+    if (tilt is not None and raw.get("frame") != "pgsm"
+            and ("tilt_min" in raw or "tilt_max" in raw)):
         raise _bad("tilt_deg_min/max (degrees) cannot be combined with tilt_min/tilt_max (radians).")
     spec = make_spec(
         region, raw.get("frame"),

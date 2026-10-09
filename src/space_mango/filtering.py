@@ -6,7 +6,7 @@ Both sides call build_filter_exprs, so a query filters identically wherever it r
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 
 import polars as pl
@@ -14,17 +14,17 @@ import polars as pl
 from space_mango.errors import QueryError
 from space_mango.models import Region, filters_for
 
-# Non-filter query parameters each endpoint accepts; anything else is a 400, never ignored.
-COUNT_PARAMS = frozenset({
-    "columns", "spacecraft", "start", "stop", "time_min", "time_max",
-    "sw_paired_only", "normalized_only",
-})
-DATA_PARAMS = COUNT_PARAMS | {"limit", "format"}
-TIMELINE_PARAMS = frozenset({"sc", "start", "stop", "columns", "format"})
 FRAME_PARAMS = frozenset({
     "frame", "cone_min", "cone_max", "clock_min", "clock_max", "tilt_deg_min", "tilt_deg_max",
 })
 """Frame and angle-selection parameters (degrees)."""
+# Non-filter query parameters each endpoint accepts; anything else is a 400, never ignored.
+COUNT_PARAMS = frozenset({
+    "columns", "spacecraft", "start", "stop", "time_min", "time_max",
+    "sw_paired_only", "normalized_only",
+}) | FRAME_PARAMS
+DATA_PARAMS = COUNT_PARAMS | {"limit", "format"}
+TIMELINE_PARAMS = frozenset({"sc", "start", "stop", "columns", "format"})
 
 
 def reject_unknown_params(endpoint: str, keys: Iterable[str], allowed: frozenset[str]) -> None:
@@ -114,6 +114,7 @@ def build_filter_exprs(
     sw_paired_only: bool = False,
     normalized_only: bool = False,
     ranges: Mapping[str, float] | None = None,
+    extra: Sequence[pl.Expr] = (),
 ) -> list[pl.Expr]:
     exprs: list[pl.Expr] = []
     if spacecraft:
@@ -144,4 +145,5 @@ def build_filter_exprs(
             )
         col = pl.col(filt.column)
         exprs.append(col >= value if suffix == "min" else col <= value)
+    exprs.extend(extra)
     return exprs

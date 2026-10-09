@@ -56,7 +56,6 @@ def test_count_magnetosphere(pgsm_api, tilt, n):
 @pytest.mark.parametrize(
     ("region", "params"),
     [
-        ("magnetosheath", {"cone_min": 0, "cone_max": 90}),
         ("solar_wind", {"frame": "pgsm"}),
         ("magnetosheath", {"frame": "pgsm", "cone_min": 0}),
         ("magnetosphere", {"frame": "pgsm", "cone_min": 0, "cone_max": 9}),
@@ -68,7 +67,7 @@ def test_count_refuses_bad_frame(pgsm_api, region, params):
 
 
 def test_data_endpoint_refuses_frame(pgsm_api):
-    r = pgsm_api.get("/api/v1/regions/magnetosheath/data", params={"frame": "pgsm"})
+    r = pgsm_api.get("/api/v1/regions/magnetosheath/data", params={"frame": "pgsm", "cone_min": 0, "cone_max": 90})
     assert r.status_code == 400
 
 

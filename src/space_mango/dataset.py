@@ -14,7 +14,15 @@ from space_mango.filtering import (
     build_filter_exprs,
     parse_range_params,
 )
-from space_mango.frames import OUTPUT_COLUMNS, FrameSpec, candidates
+from space_mango.frames import (
+    OUTPUT_COLUMNS,
+    FrameSpec,
+    candidates,
+    frame_columns,
+    implied_flags,
+    required_columns,
+    selection,
+)
 from space_mango.models import Region, columns_for, filters_for
 
 _DEFAULT_DATA_DIR = Path("/data/mango")
@@ -71,7 +79,12 @@ class MangoDataset:
         sw_paired_only: bool = False,
         normalized_only: bool = False,
         params: frozenset[str] = DATA_PARAMS,
+        frame_spec: FrameSpec | None = None,
     ) -> pl.LazyFrame:
+        if frame_spec is not None:
+            paired, normalized = implied_flags(frame_spec)
+            sw_paired_only = sw_paired_only or paired
+            normalized_only = normalized_only or normalized
         lf = self._lazy(region)
         if columns:
             columns = list(dict.fromkeys(columns))
@@ -95,6 +108,16 @@ class MangoDataset:
                         f"{did_you_mean(c, available)}",
                         available,
                     )
+        if frame_spec is not None:
+            missing = [c for c in required_columns(frame_spec) if c not in available]
+            if missing:
+                raise QueryError(
+                    "bad_frame",
+                    f"Region '{region.value}' does not serve {missing}, "
+                    "needed by this frame or selection.",
+                )
+        sel = selection(frame_spec) if frame_spec is not None else None
+        extra = [sel] if sel is not None else []
         exprs = build_filter_exprs(
             region,
             available,
@@ -105,11 +128,16 @@ class MangoDataset:
             sw_paired_only=sw_paired_only,
             normalized_only=normalized_only,
             ranges=parse_range_params(region, raw_params, params),
+            extra=extra,
         )
         if exprs:
             lf = lf.filter(pl.all_horizontal(exprs))
         if columns:
             lf = lf.select(columns)
+        elif frame_spec is not None and frame_spec.frame in ("gsm", "swi"):
+            lf = lf.select(
+                frame_columns(region.value, frame_spec.frame, lf.collect_schema().names())
+            )
         return lf
 
     def query(
@@ -125,6 +153,7 @@ class MangoDataset:
         sw_paired_only: bool = False,
         normalized_only: bool = False,
         limit: int | None = None,
+        frame_spec: FrameSpec | None = None,
     ) -> pl.DataFrame:
         lf = self._plan(
             region,
@@ -136,6 +165,7 @@ class MangoDataset:
             stop_inclusive=stop_inclusive,
             sw_paired_only=sw_paired_only,
             normalized_only=normalized_only,
+            frame_spec=frame_spec,
         )
         if limit is not None:
             lf = lf.limit(limit)
@@ -168,17 +198,15 @@ class MangoDataset:
         stop_inclusive: bool = False,
         sw_paired_only: bool = False,
         normalized_only: bool = False,
-        pgsm: FrameSpec | None = None,
+        frame_spec: FrameSpec | None = None,
     ) -> tuple[int, int]:
-        """Rows and estimated bytes of the matching /data request. With pgsm: the rows the
-        client's PGSM transform would output (a row selected twice counts twice)."""
-        if pgsm is not None:
-            normalized_only = True
-            sw_paired_only = sw_paired_only or pgsm.region == Region.magnetosheath.value
+        """Rows and estimated bytes of the matching /data request. For a PGSM spec: the rows
+        the client's PGSM transform would output (a row selected twice counts twice)."""
+        pgsm = frame_spec if frame_spec is not None and frame_spec.frame == "pgsm" else None
         common: dict[str, Any] = dict(
             spacecraft=spacecraft, start=start, stop=stop, stop_inclusive=stop_inclusive,
             sw_paired_only=sw_paired_only, normalized_only=normalized_only,
-            params=COUNT_PARAMS | FRAME_PARAMS,
+            params=COUNT_PARAMS | FRAME_PARAMS, frame_spec=frame_spec,
         )
         lf = self._plan(region, raw_params, columns=columns, **common)  # validates columns
         row_bytes = sum(_dtype_bytes(dt) for dt in lf.collect_schema().dtypes())
